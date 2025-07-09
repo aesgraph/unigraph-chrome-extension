@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "Unigraph",
+  "version": "1.0",
+  "permissions": [
+    "contextMenus",
+    "tabs",
+    "activeTab",
+    "scripting",
+    "notifications",
+    "identity",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "dist/background.js"
+  },
+  "host_permissions": ["*://*/*"],
+  "oauth2": {
+    "client_id": "1089489360036-8gmtvjgpd0p8dptqfdrhaj0cfd6glvp5.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/userinfo.profile"
+    ]
+  },
+  "action": {
+    "default_icon": {
+      "16": "icons/icon16.PNG",
+      "32": "icons/icon16.PNG"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.PNG",
+    "48": "icons/icon16.PNG",
+    "128": "icons/icon16.PNG"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv1hLfYe2MWLZ4dOEL5+WY/es7LI165BqC+vzfGLybama8RV2MeVZnocWFVQFeCglIpZk7F/uSsQbfk1UG0ormeXvlkgwWB1kdSrbC02lxxA6x2de6obG95rYhUNxNcSkNxthzBgV1akzaNLeKEOYkJAC39Kh7Uvt7bCpiCGHnCl0Oed5IazBzDvVwJaLaJOuSAPFbc5X0zPNHlDcxMEqTBZ43Ycd1zQEgMiH2CUZ9AUnUe3J9/Fo6ooEeiYvgBOiX3v3aZuy8djBQqyGligMf1fd+YNp4EKbNwUyFw2fVP/mICfxAraX8WgsEC7EwoTGswpVqMGxYRFTUkdRq465GwIDAQAB"
+}

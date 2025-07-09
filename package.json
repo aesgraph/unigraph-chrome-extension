@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "dotenv": "^17.0.1"
+  },
+  "scripts": {
+    "build": "npm install && cd package && npm install && npx tsc && cd .. && node scripts/replace-env.js",
+    "clean": "rm -rf package/dist/* && rm -rf package/node_modules/* && rm -rf node_modules/*"
+  }
+}
