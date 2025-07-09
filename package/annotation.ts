@@ -333,7 +333,49 @@ try {
             ?.textContent || "";
 
         // If image annotation, save image_url in data field, no selectedText
-        if (imageUrlParam) {
+        if (imageUrlParam && pageUrlParam && !textParam) {
+          // Save screenshot to storage, then save webpage, then annotation
+          const url = decodeURIComponent(pageUrlParam);
+          const title = document.title;
+          let html_content = undefined;
+          try {
+            html_content = document.documentElement.outerHTML;
+          } catch (e) {}
+          let screenshot_url = undefined;
+          try {
+            screenshot_url = await (window as any).uploadScreenshot(
+              decodeURIComponent(imageUrlParam)
+            );
+          } catch (e) {
+            alert("Failed to upload screenshot: " + ((e as any).message || e));
+            return;
+          }
+          try {
+            await (window as any).saveWebpage({
+              url,
+              title,
+              html_content,
+              screenshot_url,
+              metadata: {
+                comment: primaryComment,
+                secondaryComment,
+                tags,
+              },
+            });
+            await (window as any).saveAnnotation({
+              pageUrl: url,
+              comment: primaryComment,
+              secondaryComment,
+              tags,
+            });
+          } catch (e) {
+            alert(
+              "Failed to save webpage or annotation: " +
+                ((e as any).message || e)
+            );
+            return;
+          }
+        } else if (imageUrlParam) {
           await (window as any).saveAnnotation({
             imageUrl: decodeURIComponent(imageUrlParam),
             pageUrl,
@@ -341,13 +383,23 @@ try {
             secondaryComment,
             tags,
           });
-        } else if (pageUrlParam && !textParam) {
-          // Webpage annotation (no selected text or image)
-          await (window as any).saveAnnotation({
-            pageUrl,
-            comment: primaryComment,
-            secondaryComment,
-            tags,
+        } else if (pageUrlParam && !textParam && !imageUrlParam) {
+          // Webpage annotation (no selected text or image) - save to webpages table
+          const url = decodeURIComponent(pageUrlParam);
+          const title = document.title;
+          let html_content = undefined;
+          try {
+            html_content = document.documentElement.outerHTML;
+          } catch (e) {}
+          await (window as any).saveWebpage({
+            url,
+            title,
+            html_content,
+            metadata: {
+              comment: primaryComment,
+              secondaryComment,
+              tags,
+            },
           });
         } else {
           // Text annotation

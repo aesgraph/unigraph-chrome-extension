@@ -208,6 +208,91 @@ async function saveAnnotation(annotation: Annotation): Promise<any> {
   }
 }
 
+// Function to save a webpage to Supabase
+async function saveWebpage(webpage: {
+  url: string;
+  title: string;
+  html_content?: string;
+  screenshot_url?: string;
+  metadata?: any;
+}): Promise<any> {
+  try {
+    // Get session from storage
+    const data: any = await new Promise((resolve) => {
+      chrome.storage.local.get(["supabase_session"], resolve);
+    });
+    if (!data.supabase_session || !data.supabase_session.access_token) {
+      await authenticateWithGoogle();
+      const refreshed: any = await new Promise((resolve) => {
+        chrome.storage.local.get(["supabase_session"], resolve);
+      });
+      data.supabase_session = refreshed.supabase_session;
+    }
+    const supabase = await initSupabase();
+    await supabase.auth.setSession({
+      access_token: data.supabase_session.access_token,
+      refresh_token: data.supabase_session.refresh_token,
+    });
+    const insertData = {
+      url: webpage.url,
+      user_id: data.supabase_session.user.id,
+      title: webpage.title,
+      html_content: webpage.html_content,
+      screenshot_url: webpage.screenshot_url,
+      metadata: webpage.metadata,
+    };
+    const { data: result, error } = await supabase
+      .from("webpages")
+      .insert([insertData]);
+    if (error) throw error;
+    return result;
+  } catch (error) {
+    console.error("Error saving webpage:", error);
+    throw error;
+  }
+}
+
+// Function to upload a screenshot to Supabase Storage and return the public URL
+async function uploadScreenshot(base64Data: string): Promise<string> {
+  try {
+    const data: any = await new Promise((resolve) => {
+      chrome.storage.local.get(["supabase_session"], resolve);
+    });
+    if (!data.supabase_session || !data.supabase_session.access_token) {
+      await authenticateWithGoogle();
+      const refreshed: any = await new Promise((resolve) => {
+        chrome.storage.local.get(["supabase_session"], resolve);
+      });
+      data.supabase_session = refreshed.supabase_session;
+    }
+    const supabase = await initSupabase();
+    await supabase.auth.setSession({
+      access_token: data.supabase_session.access_token,
+      refresh_token: data.supabase_session.refresh_token,
+    });
+    // Generate a unique filename
+    const filename = `screenshot_${Date.now()}_${Math.floor(
+      Math.random() * 1e6
+    )}.png`;
+    // Remove the data URL prefix if present
+    const base64 = base64Data.replace(/^data:image\/png;base64,/, "");
+    const fileData = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    // Upload to 'screenshots' bucket
+    const { data: uploadData, error } = await supabase.storage
+      .from("screenshots")
+      .upload(filename, fileData, { contentType: "image/png" });
+    if (error) throw error;
+    // Get public URL
+    const { publicURL } = supabase.storage
+      .from("screenshots")
+      .getPublicUrl(filename).data;
+    return publicURL;
+  } catch (error) {
+    console.error("Error uploading screenshot:", error);
+    throw error;
+  }
+}
+
 // Check if user is already authenticated
 async function isAuthenticated(): Promise<boolean> {
   const data: any = await new Promise((resolve) => {
@@ -223,3 +308,5 @@ async function isAuthenticated(): Promise<boolean> {
 (self as any).authenticateWithGoogle = authenticateWithGoogle;
 (self as any).saveAnnotation = saveAnnotation;
 (self as any).isAuthenticated = isAuthenticated;
+(self as any).saveWebpage = saveWebpage;
+(self as any).uploadScreenshot = uploadScreenshot;
