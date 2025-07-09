@@ -37,13 +37,13 @@ function createContextMenus(isLoggedIn: boolean) {
         });
         chrome.contextMenus.create({
           id: "savePageToUnigraph",
-          title: "Save page as url",
+          title: "Save webpage",
           contexts: ["page"],
         });
         chrome.contextMenus.create({
           id: "savePageAsScreenshot",
-          title: "Save page as screenshot",
-          contexts: ["page"],
+          title: "Save screenshot",
+          contexts: ["page", "image"],
         });
         chrome.contextMenus.create({
           id: "two",

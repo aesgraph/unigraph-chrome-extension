@@ -233,6 +233,18 @@ async function saveWebpage(webpage: {
       access_token: data.supabase_session.access_token,
       refresh_token: data.supabase_session.refresh_token,
     });
+    // Check if the webpage already exists for this url
+    const { data: existing, error: selectError } = await supabase
+      .from("webpages")
+      .select("*")
+      .eq("url", webpage.url)
+      .limit(1);
+    if (selectError) throw selectError;
+    if (existing && existing.length > 0) {
+      // Already exists, return existing record
+      return existing[0];
+    }
+    // Insert new record
     const insertData = {
       url: webpage.url,
       user_id: data.supabase_session.user.id,
