@@ -291,15 +291,38 @@ chrome.contextMenus.onClicked.addListener(
     }
     // --- Unigraph: Save page ---
     if (info.menuItemId === "savePageToUnigraph" && tab && tab.url) {
-      const encodedPageUrl = encodeURIComponent(tab.url);
-      const annotationUrl = `annotation.html?pageUrl=${encodedPageUrl}`;
-      chrome.windows.create({
-        url: annotationUrl,
-        type: "popup",
-        width: 320,
-        height: 340,
-        focused: true,
-      });
+      // Take a screenshot of the current tab (like savePageAsScreenshot)
+      const pageUrl = tab.url || "";
+      chrome.tabs
+        .captureVisibleTab(tab.windowId, {
+          format: "png",
+          quality: 80,
+        })
+        .then((screenshot) => {
+          // Create annotation URL with screenshot and page URL
+          const encodedImageUrl = encodeURIComponent(screenshot);
+          const encodedPageUrl = encodeURIComponent(pageUrl);
+          const annotationUrl = `annotation.html?imageUrl=${encodedImageUrl}&pageUrl=${encodedPageUrl}`;
+          chrome.windows.create({
+            url: annotationUrl,
+            type: "popup",
+            width: 400,
+            height: 500,
+            focused: true,
+          });
+        })
+        .catch((error) => {
+          // Fallback: open annotation without screenshot
+          const encodedPageUrl = encodeURIComponent(pageUrl);
+          const annotationUrl = `annotation.html?pageUrl=${encodedPageUrl}`;
+          chrome.windows.create({
+            url: annotationUrl,
+            type: "popup",
+            width: 400,
+            height: 500,
+            focused: true,
+          });
+        });
       return;
     }
     // --- Unigraph: Save page as screenshot ---

@@ -334,22 +334,14 @@ try {
 
         // If image annotation, save image_url in data field, no selectedText
         if (imageUrlParam && pageUrlParam && !textParam) {
-          // Save screenshot to storage, then save webpage, then annotation
+          // Save webpage with base64 screenshot, then annotation
           const url = decodeURIComponent(pageUrlParam);
           const title = document.title;
           let html_content = undefined;
           try {
             html_content = document.documentElement.outerHTML;
           } catch (e) {}
-          let screenshot_url = undefined;
-          try {
-            screenshot_url = await (window as any).uploadScreenshot(
-              decodeURIComponent(imageUrlParam)
-            );
-          } catch (e) {
-            alert("Failed to upload screenshot: " + ((e as any).message || e));
-            return;
-          }
+          const screenshot_url = decodeURIComponent(imageUrlParam);
           try {
             await (window as any).saveWebpage({
               url,
