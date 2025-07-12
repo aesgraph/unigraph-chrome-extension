@@ -176,15 +176,29 @@ async function isUserLoggedIn(): Promise<boolean> {
         try {
           // @ts-ignore
           if (typeof (self as any).validateSession === "function") {
-            const isValid = (self as any).validateSession(session);
-            if (!isValid) {
-              console.log(
-                "[Unigraph] Session validation failed, clearing storage"
-              );
-              chrome.storage.local.remove(["supabase_session", "user_info"]);
-              resolve(false);
-              return;
-            }
+            (self as any)
+              .validateSession(session)
+              .then((isValid: boolean) => {
+                if (!isValid) {
+                  console.log(
+                    "[Unigraph] Session validation failed, clearing storage"
+                  );
+                  chrome.storage.local.remove([
+                    "supabase_session",
+                    "user_info",
+                  ]);
+                  resolve(false);
+                  return;
+                }
+                resolve(true);
+              })
+              .catch((error: any) => {
+                console.log("[Unigraph] Session validation error:", error);
+                // If validation fails, assume session is invalid
+                chrome.storage.local.remove(["supabase_session", "user_info"]);
+                resolve(false);
+              });
+            return; // Return early since we're handling the Promise asynchronously
           }
         } catch (error) {
           console.log("[Unigraph] Session validation error:", error);
