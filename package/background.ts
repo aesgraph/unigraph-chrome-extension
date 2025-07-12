@@ -201,16 +201,10 @@ async function isUserLoggedIn(): Promise<boolean> {
 // Initial context menu creation
 isUserLoggedIn().then(createContextMenus);
 
-// Periodic session check and context menu refresh (every 2 minutes)
+// Consolidated session check and context menu refresh (every 60 seconds)
 setInterval(async () => {
   const isLoggedIn = await isUserLoggedIn();
-  console.log("[Unigraph] Periodic session check - logged in:", isLoggedIn);
-  createContextMenus(isLoggedIn);
-}, 2 * 60 * 1000); // 2 minutes
-
-// More frequent context menu refresh for better responsiveness (every 60 seconds)
-setInterval(async () => {
-  const isLoggedIn = await isUserLoggedIn();
+  console.log("[Unigraph] Consolidated session check - logged in:", isLoggedIn);
   createContextMenus(isLoggedIn);
 }, 60 * 1000); // 60 seconds
 
