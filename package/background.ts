@@ -949,38 +949,88 @@ async function downloadWebpageAsHTML(tab: chrome.tabs.Tab) {
       target: { tabId: tab.id },
       func: () => {
         return new Promise<string>((resolve) => {
-          // Get all CSS from stylesheets
-          function getAllCSS(): string {
-            let css = "";
+          // Process external stylesheets and collect their CSS
+          async function processStylesheets(): Promise<string> {
+            let combinedCSS = "";
 
-            // Get all stylesheets
-            const styleSheets = Array.from(document.styleSheets);
+            // First get all inline styles
+            const styleElements = Array.from(
+              document.querySelectorAll("style")
+            );
+            styleElements.forEach((style) => {
+              combinedCSS += style.textContent + "\n\n";
+            });
 
-            for (const sheet of styleSheets) {
-              try {
-                // Get all CSS rules from the stylesheet
-                const rules = Array.from(sheet.cssRules || sheet.rules || []);
+            // Then process external stylesheets
+            const linkElements = Array.from(
+              document.querySelectorAll('link[rel="stylesheet"]')
+            );
 
-                for (const rule of rules) {
-                  css += rule.cssText + "\n";
-                }
-              } catch (e) {
-                console.warn("[Unigraph] Could not access stylesheet:", e);
-                // For cross-origin stylesheets, we can't access the rules
-                // We'll include the href if available
-                if (sheet.href) {
-                  css += `/* External stylesheet: ${sheet.href} */\n`;
-                }
-              }
+            if (linkElements.length === 0) {
+              return combinedCSS;
             }
 
-            return css;
+            const cssPromises = linkElements.map(async (link) => {
+              try {
+                const href = link.getAttribute("href");
+                if (!href) return "";
+
+                // Convert to absolute URL if needed
+                const absoluteURL = new URL(href, document.baseURI).href;
+
+                const response = await fetch(absoluteURL);
+                if (!response.ok) return "";
+
+                const cssText = await response.text();
+
+                // Fix relative URLs in the CSS (url(...) references)
+                const baseURL = new URL(".", absoluteURL).href;
+                return fixCSSUrls(cssText, baseURL);
+              } catch (e) {
+                console.warn(`[Unigraph] Failed to fetch stylesheet:`, e);
+                return "";
+              }
+            });
+
+            const results = await Promise.all(cssPromises);
+            combinedCSS += results.join("\n\n");
+
+            return combinedCSS;
+          }
+
+          // Fix relative URLs in CSS
+          function fixCSSUrls(css: string, baseURL: string): string {
+            // Match all url(...) in CSS
+            return css.replace(/url\(['"]?([^'")]+)['"]?\)/g, (match, url) => {
+              // Skip data URLs
+              if (
+                url.startsWith("data:") ||
+                url.startsWith("http:") ||
+                url.startsWith("https:")
+              ) {
+                return match;
+              }
+
+              // Convert to absolute URL
+              const absoluteURL = new URL(url, baseURL).href;
+              return `url("${absoluteURL}")`;
+            });
           }
 
           // Function to convert image to base64 using fetch
-          async function imageToBase64(url: string): Promise<string> {
+          async function imageToBase64(
+            url: string,
+            retries = 1
+          ): Promise<string> {
             try {
-              const response = await fetch(url);
+              const response = await fetch(url, {
+                mode: "cors",
+                cache: "force-cache",
+              });
+
+              if (!response.ok)
+                throw new Error(`HTTP error ${response.status}`);
+
               const blob = await response.blob();
               return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -989,73 +1039,257 @@ async function downloadWebpageAsHTML(tab: chrome.tabs.Tab) {
                 reader.readAsDataURL(blob);
               });
             } catch (error) {
-              console.warn(
-                `[Unigraph] Failed to convert image to base64: ${url}`,
-                error
-              );
-              return url; // Return original URL if conversion fails
-            }
-          }
-
-          // Process all images and convert to base64
-          async function processImages() {
-            const images = document.querySelectorAll("img");
-            let imagesToProcess = images.length;
-
-            if (imagesToProcess === 0) {
-              // No images to process, return the HTML directly
-              resolve(createCompleteHTML());
-              return;
-            }
-
-            // Process each image
-            for (const img of Array.from(images)) {
-              if (img.src && !img.src.startsWith("data:")) {
+              if (retries > 0) {
+                // Try once more with no-cors mode
                 try {
-                  const base64Url = await imageToBase64(img.src);
-                  img.setAttribute("src", base64Url);
-                  console.log(
-                    `[Unigraph] Converted image to base64: ${img.src.substring(
-                      0,
-                      50
-                    )}...`
-                  );
+                  const response = await fetch(url, {
+                    mode: "no-cors",
+                    cache: "force-cache",
+                  });
+                  const blob = await response.blob();
+                  return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result as string);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                  });
                 } catch (e) {
                   console.warn(
-                    `[Unigraph] Failed to process image: ${img.src}`,
+                    `[Unigraph] Failed to fetch image with no-cors: ${url}`,
                     e
                   );
+                  return createPlaceholderImage(url);
                 }
-              }
-              imagesToProcess--;
-              if (imagesToProcess === 0) {
-                resolve(createCompleteHTML());
+              } else {
+                console.warn(
+                  `[Unigraph] Failed to convert image to base64: ${url}`,
+                  error
+                );
+                return createPlaceholderImage(url);
               }
             }
           }
 
-          // Function to create complete HTML with embedded CSS
-          function createCompleteHTML(): string {
-            const css = getAllCSS();
-            const html = document.documentElement.outerHTML;
+          // Create placeholder for failed images
+          function createPlaceholderImage(originalUrl: string): string {
+            const canvas = document.createElement("canvas");
+            canvas.width = 200;
+            canvas.height = 150;
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+              ctx.fillStyle = "#f0f0f0";
+              ctx.fillRect(0, 0, 200, 150);
+              ctx.fillStyle = "#aaaaaa";
+              ctx.font = "14px Arial";
+              ctx.textAlign = "center";
+              ctx.fillText("Image unavailable", 100, 75);
+              try {
+                return canvas.toDataURL("image/png");
+              } catch (e) {
+                return "data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==";
+              }
+            }
+            return "data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==";
+          }
 
-            return `<!DOCTYPE html>
-<html>
+          // Process all images and convert to data URLs
+          async function processImages() {
+            const images = document.querySelectorAll("img");
+            const imagePromises = Array.from(images).map(async (img) => {
+              if (!img.src || img.src.startsWith("data:")) return;
+
+              try {
+                const dataUrl = await imageToBase64(img.src);
+                img.setAttribute("src", dataUrl);
+                // Also update srcset if present
+                if (img.srcset) {
+                  img.removeAttribute("srcset");
+                }
+              } catch (e) {
+                console.warn(
+                  `[Unigraph] Failed to process image: ${img.src}`,
+                  e
+                );
+              }
+            });
+
+            // Wait for all images to be processed
+            await Promise.all(imagePromises);
+          }
+
+          // Fix viewport meta tag if missing
+          function ensureViewportMeta() {
+            let hasViewport = false;
+            const metaTags = document.querySelectorAll('meta[name="viewport"]');
+
+            if (metaTags.length > 0) {
+              hasViewport = true;
+            }
+
+            if (!hasViewport) {
+              const meta = document.createElement("meta");
+              meta.name = "viewport";
+              meta.content = "width=device-width, initial-scale=1";
+              document.head.appendChild(meta);
+            }
+          }
+
+          // Function to create the final HTML document with embedded resources
+          async function createFinalHTML() {
+            try {
+              // Ensure viewport meta tag
+              ensureViewportMeta();
+
+              // Get combined CSS from all stylesheets
+              const combinedCSS = await processStylesheets();
+
+              // Process images
+              await processImages();
+
+              // Get the current page title
+              const pageTitle = document.title || "Downloaded Webpage";
+
+              // Get the current HTML content
+              const bodyContent = document.body.innerHTML;
+              const headContent = document.head.innerHTML.replace(
+                /<link[^>]*rel="stylesheet"[^>]*>/gi,
+                ""
+              );
+
+              // Create a new HTML document with embedded styles
+              const finalHTML = `<!DOCTYPE html>
+<html lang="en">
 <head>
-    <meta charset="utf-8">
-    <title>${document.title || "Downloaded Webpage"}</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${pageTitle}</title>
+    ${headContent}
     <style>
-${css}
+        /* Reset and basic styling */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 0;
+        }
+        
+        /* Container for content - more flexible width */
+        .unigraph-content-wrapper {
+            width: 100%;
+            margin: 0 auto;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        
+        /* For mobile devices */
+        @media (max-width: 768px) {
+            .unigraph-content-wrapper {
+                padding: 15px;
+            }
+        }
+        
+        img {
+            max-width: 100%;
+            height: auto;
+        }
+        
+        /* Custom styling for better readability */
+        h1, h2, h3, h4, h5, h6 {
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+            line-height: 1.3;
+        }
+        
+        a {
+            color: #0366d6;
+            text-decoration: none;
+        }
+        
+        a:hover {
+            text-decoration: underline;
+        }
+        
+        p {
+            margin-top: 0;
+            margin-bottom: 1.5em;
+        }
+        
+        pre, code {
+            font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+            background-color: #f6f8fa;
+            border-radius: 3px;
+            padding: 0.2em 0.4em;
+        }
+        
+        pre {
+            padding: 16px;
+            overflow: auto;
+            line-height: 1.45;
+        }
+        
+        pre code {
+            background-color: transparent;
+            padding: 0;
+        }
+        
+        blockquote {
+            margin-left: 0;
+            padding-left: 1em;
+            border-left: 4px solid #dfe2e5;
+            color: #555;
+        }
+        
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 1.5em;
+        }
+        
+        table th, table td {
+            padding: 8px;
+            border: 1px solid #dfe2e5;
+            text-align: left;
+        }
+        
+        table th {
+            background-color: #f6f8fa;
+        }
+        
+        hr {
+            height: 1px;
+            background-color: #dfe2e5;
+            border: none;
+            margin: 2em 0;
+        }
+        
+        /* Original site's CSS */
+        ${combinedCSS}
     </style>
 </head>
 <body>
-${document.body.innerHTML}
+    <div class="unigraph-content-wrapper">
+        ${bodyContent}
+    </div>
 </body>
 </html>`;
+
+              return finalHTML;
+            } catch (error) {
+              console.error("[Unigraph] Error creating final HTML:", error);
+              return document.documentElement.outerHTML;
+            }
           }
 
-          // Start processing images
-          processImages();
+          // Start the process
+          createFinalHTML()
+            .then((html) => {
+              resolve(html);
+            })
+            .catch((error) => {
+              console.error("[Unigraph] Error in createFinalHTML:", error);
+              resolve(document.documentElement.outerHTML); // Fallback
+            });
         });
       },
     });
