@@ -321,9 +321,36 @@ async function isAuthenticated(): Promise<boolean> {
   return result;
 }
 
+// Validate session with Supabase
+async function validateSession(session: any): Promise<boolean> {
+  try {
+    const supabase = await initSupabase();
+    await supabase.auth.setSession({
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+    });
+
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
+
+    if (error || !user) {
+      console.log("[Unigraph] Session validation failed:", error);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("[Unigraph] Session validation error:", error);
+    return false;
+  }
+}
+
 // Make functions available globally
 (self as any).authenticateWithGoogle = authenticateWithGoogle;
 (self as any).saveAnnotation = saveAnnotation;
 (self as any).isAuthenticated = isAuthenticated;
 (self as any).saveWebpage = saveWebpage;
 (self as any).uploadScreenshot = uploadScreenshot;
+(self as any).validateSession = validateSession;

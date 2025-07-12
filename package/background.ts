@@ -113,16 +113,84 @@ async function createContextMenus(isLoggedIn: boolean) {
   });
 }
 
-async function isUserLoggedIn(): Promise<boolean> {
-  return new Promise((resolve) => {
-    chrome.storage.local.get(["supabase_session"], (data: any) => {
-      const session = data.supabase_session;
-      resolve(!!(session && session.access_token));
+// Helper function to validate session and show login prompt if needed
+async function validateSessionBeforeAction(): Promise<boolean> {
+  const isLoggedIn = await isUserLoggedIn();
+  if (!isLoggedIn) {
+    chrome.notifications?.create({
+      type: "basic",
+      iconUrl: "icons/icon16.PNG",
+      title: "Unigraph",
+      message:
+        "Please log in to use this feature. Right-click and select 'Log in to Unigraph'.",
     });
+    return false;
+  }
+  return true;
+}
+
+async function isUserLoggedIn(): Promise<boolean> {
+  return new Promise(async (resolve) => {
+    try {
+      chrome.storage.local.get(["supabase_session"], async (data: any) => {
+        const session = data.supabase_session;
+
+        if (!session || !session.access_token) {
+          resolve(false);
+          return;
+        }
+
+        // Check if token is expired
+        const now = Math.floor(Date.now() / 1000);
+        if (session.expires_at && now > session.expires_at) {
+          console.log("[Unigraph] Session expired, clearing storage");
+          chrome.storage.local.remove(["supabase_session", "user_info"]);
+          resolve(false);
+          return;
+        }
+
+        // Try to validate the session with Supabase
+        try {
+          // @ts-ignore
+          if (typeof (self as any).validateSession === "function") {
+            const isValid = await (self as any).validateSession(session);
+            if (!isValid) {
+              console.log(
+                "[Unigraph] Session validation failed, clearing storage"
+              );
+              chrome.storage.local.remove(["supabase_session", "user_info"]);
+              resolve(false);
+              return;
+            }
+          }
+        } catch (error) {
+          console.log("[Unigraph] Session validation error:", error);
+          // If validation fails, assume session is invalid
+          chrome.storage.local.remove(["supabase_session", "user_info"]);
+          resolve(false);
+          return;
+        }
+
+        resolve(true);
+      });
+    } catch (error) {
+      console.error("[Unigraph] Error checking login status:", error);
+      resolve(false);
+    }
   });
 }
 
+// Initial context menu creation
 isUserLoggedIn().then(createContextMenus);
+
+// Periodic session check (every 5 minutes)
+setInterval(async () => {
+  const wasLoggedIn = await isUserLoggedIn();
+  if (!wasLoggedIn) {
+    console.log("[Unigraph] Session expired, updating context menu");
+    createContextMenus(false);
+  }
+}, 5 * 60 * 1000); // 5 minutes
 
 chrome.runtime.onStartup.addListener(() => {
   isUserLoggedIn().then(createContextMenus);
@@ -311,7 +379,7 @@ chrome.action.onClicked.addListener(async (tab) => {
 });
 
 chrome.contextMenus.onClicked.addListener(
-  (info: chrome.contextMenus.OnClickData, tab?: chrome.tabs.Tab) => {
+  async (info: chrome.contextMenus.OnClickData, tab?: chrome.tabs.Tab) => {
     if (info.menuItemId === "loginToUnigraph") {
       console.log("[Unigraph] 'Log in to Unigraph' menu clicked");
       // @ts-ignore
@@ -390,6 +458,11 @@ chrome.contextMenus.onClicked.addListener(
     }
     // --- Unigraph: Create Annotation ---
     if (info.menuItemId === "createAnnotation") {
+      // Validate session before opening annotation window
+      if (!(await validateSessionBeforeAction())) {
+        return;
+      }
+
       let annotationUrl: string | undefined;
       if (info.srcUrl) {
         // Image annotation
@@ -426,6 +499,11 @@ chrome.contextMenus.onClicked.addListener(
     }
     // --- Unigraph: Save page ---
     if (info.menuItemId === "savePageToUnigraph" && tab && tab.url) {
+      // Validate session before opening annotation window
+      if (!(await validateSessionBeforeAction())) {
+        return;
+      }
+
       // Take a screenshot of the current tab (like savePageAsScreenshot)
       const pageUrl = tab.url || "";
       chrome.tabs
@@ -462,6 +540,11 @@ chrome.contextMenus.onClicked.addListener(
     }
     // --- Unigraph: Save page as screenshot ---
     if (info.menuItemId === "savePageAsScreenshot" && tab && tab.url) {
+      // Validate session before opening annotation window
+      if (!(await validateSessionBeforeAction())) {
+        return;
+      }
+
       // Take a screenshot of the current tab
       chrome.tabs
         .captureVisibleTab(tab.windowId, {
@@ -543,6 +626,11 @@ chrome.contextMenus.onClicked.addListener(
       return;
     }
     if (info.menuItemId === "saveAreaAsImage" && tab && tab.id) {
+      // Validate session before opening area capture
+      if (!(await validateSessionBeforeAction())) {
+        return;
+      }
+
       console.log(
         "[Unigraph] Save area as image clicked, checking if already active"
       );
@@ -584,6 +672,11 @@ chrome.contextMenus.onClicked.addListener(
     }
     // --- Unigraph: Save PDF ---
     if (info.menuItemId === "savePdfToUnigraph") {
+      // Validate session before opening annotation window
+      if (!(await validateSessionBeforeAction())) {
+        return;
+      }
+
       let pdfUrl: string | undefined;
 
       // Check if we have a link URL (when right-clicking on a PDF link)
