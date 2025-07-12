@@ -143,9 +143,9 @@ async function validateSessionBeforeAction(): Promise<boolean> {
 }
 
 async function isUserLoggedIn(): Promise<boolean> {
-  return new Promise(async (resolve) => {
+  return new Promise((resolve) => {
     try {
-      chrome.storage.local.get(["supabase_session"], async (data: any) => {
+      chrome.storage.local.get(["supabase_session"], (data: any) => {
         const session = data.supabase_session;
         console.log(
           "[Unigraph] Checking login status - session exists:",
