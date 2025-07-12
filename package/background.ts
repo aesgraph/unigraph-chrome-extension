@@ -171,7 +171,7 @@ async function isUserLoggedIn(): Promise<boolean> {
         try {
           // @ts-ignore
           if (typeof (self as any).validateSession === "function") {
-            const isValid = await (self as any).validateSession(session);
+            const isValid = (self as any).validateSession(session);
             if (!isValid) {
               console.log(
                 "[Unigraph] Session validation failed, clearing storage"
