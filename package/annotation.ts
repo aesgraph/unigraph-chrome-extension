@@ -17,7 +17,27 @@ try {
   const imageUrlParam = params.get("imageUrl");
   const textParam = params.get("text");
   const pageUrlParam = params.get("pageUrl");
+  const pdfUrlParam = params.get("pdfUrl");
+  const hasHtmlContentParam = params.get("hasHtmlContent");
   const imageOrTextContainer = document.getElementById("imageOrTextContainer");
+
+  // Retrieve HTML content from chrome.storage if present
+  if (hasHtmlContentParam === "true") {
+    try {
+      chrome.storage.local.get(
+        ["tempHtmlContent", "tempPageUrl"],
+        function (result) {
+          if (result.tempHtmlContent) {
+            (window as any).htmlContent = result.tempHtmlContent;
+            // Clean up storage after retrieving
+            chrome.storage.local.remove(["tempHtmlContent", "tempPageUrl"]);
+          }
+        }
+      );
+    } catch (e) {
+      console.error("Error retrieving HTML content from storage:", e);
+    }
+  }
 
   if (imageUrlParam && imageOrTextContainer) {
     // Show image
@@ -47,6 +67,28 @@ try {
       textDiv.textContent = textParam;
       imageOrTextContainer.appendChild(textDiv);
     }
+  } else if (pdfUrlParam && imageOrTextContainer) {
+    // For PDF annotation, show a labeled, read-only field for PDF URL
+    const urlLabel = document.createElement("label");
+    urlLabel.textContent = "PDF URL";
+    urlLabel.setAttribute("for", "pdfUrlDisplay");
+    urlLabel.style.fontWeight = "500";
+    urlLabel.style.display = "block";
+    urlLabel.style.marginBottom = "2px";
+    const urlInput = document.createElement("input");
+    urlInput.type = "text";
+    urlInput.id = "pdfUrlDisplay";
+    urlInput.value = decodeURIComponent(pdfUrlParam);
+    urlInput.readOnly = true;
+    urlInput.style.width = "100%";
+    urlInput.style.background = "#f7f7f7";
+    urlInput.style.border = "1px solid #e0e0e0";
+    urlInput.style.borderRadius = "4px";
+    urlInput.style.padding = "4px 8px";
+    urlInput.style.fontSize = "13px";
+    urlInput.style.marginBottom = "10px";
+    imageOrTextContainer.appendChild(urlLabel);
+    imageOrTextContainer.appendChild(urlInput);
   } else if (pageUrlParam && imageOrTextContainer) {
     // For webpage annotation, show a labeled, read-only field for Page URL
     const urlLabel = document.createElement("label");
@@ -73,8 +115,16 @@ try {
 
   // Handle URL param
   const urlParam = params.get("pageUrl");
+  const pdfUrlParamForDisplay = params.get("pdfUrl");
   const pageUrlElem = document.getElementById("pageUrl");
-  if (urlParam && pageUrlElem) {
+  if (pdfUrlParamForDisplay && pageUrlElem) {
+    try {
+      const decodedUrl = decodeURIComponent(pdfUrlParamForDisplay);
+      pageUrlElem.textContent = decodedUrl;
+    } catch (e) {
+      pageUrlElem.textContent = pdfUrlParamForDisplay;
+    }
+  } else if (urlParam && pageUrlElem) {
     try {
       const decodedUrl = decodeURIComponent(urlParam);
       pageUrlElem.textContent = decodedUrl;
@@ -328,12 +378,78 @@ try {
               "secondaryComment"
             ) as HTMLTextAreaElement | null
           )?.value || "";
-        const pageUrl =
-          (document.getElementById("pageUrl") as HTMLElement | null)
-            ?.textContent || "";
+        const pageUrl = pdfUrlParam
+          ? decodeURIComponent(pdfUrlParam)
+          : (document.getElementById("pageUrl") as HTMLElement | null)
+              ?.textContent || "";
 
         // If image annotation, save image_url in data field, no selectedText
-        if (imageUrlParam) {
+        if (imageUrlParam && pageUrlParam && !textParam) {
+          // Save webpage with base64 screenshot, then annotation
+          const url = decodeURIComponent(pageUrlParam);
+          const title = document.title;
+          let html_content = undefined;
+
+          // Use stored HTML content if available (from "Save webpage" action)
+          if ((window as any).htmlContent) {
+            html_content = (window as any).htmlContent;
+          } else {
+            try {
+              html_content = document.documentElement.outerHTML;
+            } catch (e) {}
+          }
+
+          const screenshot_url = decodeURIComponent(imageUrlParam);
+
+          // Check if we'll be saving an annotation
+          const willSaveAnnotation =
+            primaryComment || secondaryComment || (tags && tags.length > 0);
+
+          // Try to save webpage
+          try {
+            await (window as any).saveWebpage({
+              url,
+              title,
+              html_content,
+              screenshot_url,
+              metadata: {
+                comment: primaryComment,
+                secondaryComment,
+                tags,
+              },
+            });
+          } catch (e) {
+            const errorMessage = (e as any).message || e;
+            if (errorMessage.includes("already saved") && willSaveAnnotation) {
+              console.log("Webpage already exists, continuing with annotation");
+            } else {
+              alert("Failed to save webpage: " + errorMessage);
+              window.close();
+              return;
+            }
+          }
+
+          // Save annotation if we have comments/tags
+          if (willSaveAnnotation) {
+            console.log(
+              "Saving annotation with comments and tags",
+              primaryComment,
+              secondaryComment,
+              tags
+            );
+            try {
+              await (window as any).saveAnnotation({
+                pageUrl: url,
+                comment: primaryComment,
+                secondaryComment,
+                tags,
+              });
+            } catch (e) {
+              alert("Failed to save annotation: " + ((e as any).message || e));
+              return;
+            }
+          }
+        } else if (imageUrlParam) {
           await (window as any).saveAnnotation({
             imageUrl: decodeURIComponent(imageUrlParam),
             pageUrl,
@@ -341,13 +457,85 @@ try {
             secondaryComment,
             tags,
           });
-        } else if (pageUrlParam && !textParam) {
-          // Webpage annotation (no selected text or image)
-          await (window as any).saveAnnotation({
-            pageUrl,
-            comment: primaryComment,
-            secondaryComment,
-            tags,
+        } else if (pdfUrlParam) {
+          // PDF annotation - save to webpages table with PDF URL
+          const url = decodeURIComponent(pdfUrlParam);
+          const title = document.title || "PDF Document";
+
+          // Check if we'll be saving an annotation
+          const willSaveAnnotation =
+            primaryComment || secondaryComment || (tags && tags.length > 0);
+
+          // Try to save webpage
+          try {
+            await (window as any).saveWebpage({
+              url,
+              title,
+              html_content: undefined,
+              metadata: {
+                comment: primaryComment,
+                secondaryComment,
+                tags,
+                type: "pdf",
+              },
+            });
+          } catch (e) {
+            const errorMessage = (e as any).message || e;
+            if (errorMessage.includes("already saved") && willSaveAnnotation) {
+              console.log("PDF already exists, continuing with annotation");
+            } else {
+              alert("Failed to save PDF: " + errorMessage);
+              window.close();
+              return;
+            }
+          }
+
+          // Save annotation if we have comments/tags
+          if (willSaveAnnotation) {
+            console.log(
+              "Saving PDF annotation with comments and tags",
+              primaryComment,
+              secondaryComment,
+              tags
+            );
+            try {
+              await (window as any).saveAnnotation({
+                pageUrl: url,
+                comment: primaryComment,
+                secondaryComment,
+                tags,
+              });
+            } catch (e) {
+              alert(
+                "Failed to save PDF annotation: " + ((e as any).message || e)
+              );
+              return;
+            }
+          }
+        } else if (pageUrlParam && !textParam && !imageUrlParam) {
+          // Webpage annotation (no selected text or image) - save to webpages table
+          const url = decodeURIComponent(pageUrlParam);
+          const title = document.title;
+          let html_content = undefined;
+
+          // Use stored HTML content if available (from "Save webpage" action)
+          if ((window as any).htmlContent) {
+            html_content = (window as any).htmlContent;
+          } else {
+            try {
+              html_content = document.documentElement.outerHTML;
+            } catch (e) {}
+          }
+
+          await (window as any).saveWebpage({
+            url,
+            title,
+            html_content,
+            metadata: {
+              comment: primaryComment,
+              secondaryComment,
+              tags,
+            },
           });
         } else {
           // Text annotation
@@ -375,4 +563,18 @@ try {
   }
 } catch (err: any) {
   console.error("Critical error: " + err.message);
+}
+
+// Auto-resize primary annotation textarea
+const primaryComment = document.getElementById("primaryComment");
+function autoResizeTextarea(el: HTMLElement) {
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 220) + "px";
+}
+if (primaryComment) {
+  primaryComment.addEventListener("input", function () {
+    autoResizeTextarea(primaryComment);
+  });
+  // Initial resize
+  autoResizeTextarea(primaryComment);
 }

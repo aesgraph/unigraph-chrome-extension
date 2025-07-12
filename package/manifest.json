@@ -9,7 +9,8 @@
     "scripting",
     "notifications",
     "identity",
-    "storage"
+    "storage",
+    "downloads"
   ],
   "background": {
     "service_worker": "dist/background.js"
@@ -36,5 +37,11 @@
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
   },
+  "web_accessible_resources": [
+    {
+      "resources": ["area-capture.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv1hLfYe2MWLZ4dOEL5+WY/es7LI165BqC+vzfGLybama8RV2MeVZnocWFVQFeCglIpZk7F/uSsQbfk1UG0ormeXvlkgwWB1kdSrbC02lxxA6x2de6obG95rYhUNxNcSkNxthzBgV1akzaNLeKEOYkJAC39Kh7Uvt7bCpiCGHnCl0Oed5IazBzDvVwJaLaJOuSAPFbc5X0zPNHlDcxMEqTBZ43Ycd1zQEgMiH2CUZ9AUnUe3J9/Fo6ooEeiYvgBOiX3v3aZuy8djBQqyGligMf1fd+YNp4EKbNwUyFw2fVP/mICfxAraX8WgsEC7EwoTGswpVqMGxYRFTUkdRq465GwIDAQAB"
 }
