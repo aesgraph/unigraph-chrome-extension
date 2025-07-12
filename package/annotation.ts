@@ -435,6 +435,12 @@ try {
           // PDF annotation - save to webpages table with PDF URL
           const url = decodeURIComponent(pdfUrlParam);
           const title = document.title || "PDF Document";
+
+          // Check if we'll be saving an annotation
+          const willSaveAnnotation =
+            primaryComment || secondaryComment || (tags && tags.length > 0);
+
+          // Try to save webpage
           try {
             await (window as any).saveWebpage({
               url,
@@ -448,8 +454,37 @@ try {
               },
             });
           } catch (e) {
-            alert("Failed to save PDF: " + ((e as any).message || e));
-            return;
+            const errorMessage = (e as any).message || e;
+            if (errorMessage.includes("already saved") && willSaveAnnotation) {
+              console.log("PDF already exists, continuing with annotation");
+            } else {
+              alert("Failed to save PDF: " + errorMessage);
+              window.close();
+              return;
+            }
+          }
+
+          // Save annotation if we have comments/tags
+          if (willSaveAnnotation) {
+            console.log(
+              "Saving PDF annotation with comments and tags",
+              primaryComment,
+              secondaryComment,
+              tags
+            );
+            try {
+              await (window as any).saveAnnotation({
+                pageUrl: url,
+                comment: primaryComment,
+                secondaryComment,
+                tags,
+              });
+            } catch (e) {
+              alert(
+                "Failed to save PDF annotation: " + ((e as any).message || e)
+              );
+              return;
+            }
           }
         } else if (pageUrlParam && !textParam && !imageUrlParam) {
           // Webpage annotation (no selected text or image) - save to webpages table
