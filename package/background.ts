@@ -6,10 +6,25 @@ importScripts("./supabase-client.js");
 
 let isCreatingMenus = false;
 
-function createContextMenus(isLoggedIn: boolean) {
+// Helper to check if localhost:3000 is live
+async function isDevServerLive(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1000);
+    const res = await fetch("http://localhost:3000/", {
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function createContextMenus(isLoggedIn: boolean) {
   if (isCreatingMenus) return;
   isCreatingMenus = true;
-  chrome.contextMenus.removeAll(() => {
+  chrome.contextMenus.removeAll(async () => {
     if (!isLoggedIn) {
       chrome.contextMenus.create({
         id: "loginToUnigraph",
@@ -19,7 +34,7 @@ function createContextMenus(isLoggedIn: boolean) {
       console.log("[Unigraph] Created 'Log in' context menu");
       isCreatingMenus = false;
     } else {
-      chrome.storage.local.get(["user_info"], (data: any) => {
+      chrome.storage.local.get(["user_info"], async (data: any) => {
         const user = data.user_info || {};
         const userName =
           user.name || user.full_name || user.email || "Unknown User";
@@ -56,6 +71,14 @@ function createContextMenus(isLoggedIn: boolean) {
           title: "Open App",
           contexts: ["all"],
         });
+        // Add Dev App menu if localhost:3000 is live
+        if (await isDevServerLive()) {
+          chrome.contextMenus.create({
+            id: "openDevApp",
+            title: "Open Dev App",
+            contexts: ["all"],
+          });
+        }
         chrome.contextMenus.create({
           id: "createAnnotation",
           title: "Create Annotation",
@@ -393,6 +416,19 @@ chrome.contextMenus.onClicked.addListener(
         title: "Unigraph",
         message: "The selected URL is not an SVG file.",
       });
+    }
+    // --- Unigraph: Open Dev App ---
+    if (info.menuItemId === "openDevApp") {
+      chrome.windows.create({
+        url: "http://localhost:3000/",
+        type: "popup",
+        width: 900,
+        height: 700,
+        top: 80,
+        left: 80,
+        focused: true,
+      });
+      return;
     }
   }
 );
