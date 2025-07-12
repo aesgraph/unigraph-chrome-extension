@@ -543,38 +543,51 @@ chrome.contextMenus.onClicked.addListener(
         return;
       }
 
-      // Take a screenshot of the current tab (like savePageAsScreenshot)
-      const pageUrl = tab.url || "";
-      chrome.tabs
-        .captureVisibleTab(tab.windowId, {
+      try {
+        // Reuse the extractWebpageHTML function to get the HTML content
+        const html = await extractWebpageHTML(tab);
+        const pageUrl = tab.url || "";
+
+        // Take a screenshot for the preview
+        const screenshot = await chrome.tabs.captureVisibleTab(tab.windowId, {
           format: "png",
           quality: 80,
-        })
-        .then((screenshot) => {
-          // Create annotation URL with screenshot and page URL
-          const encodedImageUrl = encodeURIComponent(screenshot);
-          const encodedPageUrl = encodeURIComponent(pageUrl);
-          const annotationUrl = `annotation.html?imageUrl=${encodedImageUrl}&pageUrl=${encodedPageUrl}`;
-          chrome.windows.create({
-            url: annotationUrl,
-            type: "popup",
-            width: 400,
-            height: 500,
-            focused: true,
-          });
-        })
-        .catch((error) => {
-          // Fallback: open annotation without screenshot
-          const encodedPageUrl = encodeURIComponent(pageUrl);
-          const annotationUrl = `annotation.html?pageUrl=${encodedPageUrl}`;
-          chrome.windows.create({
-            url: annotationUrl,
-            type: "popup",
-            width: 400,
-            height: 500,
-            focused: true,
-          });
         });
+
+        // Create annotation URL with screenshot, HTML content, and page URL
+        const encodedImageUrl = encodeURIComponent(screenshot);
+        const encodedHtml = encodeURIComponent(html);
+        const encodedPageUrl = encodeURIComponent(pageUrl);
+        const annotationUrl = `annotation.html?imageUrl=${encodedImageUrl}&htmlContent=${encodedHtml}&pageUrl=${encodedPageUrl}`;
+
+        chrome.windows.create({
+          url: annotationUrl,
+          type: "popup",
+          width: 400,
+          height: 500,
+          focused: true,
+        });
+
+        console.log(
+          "[Unigraph] Opened annotation window with screenshot and HTML content"
+        );
+      } catch (error) {
+        console.error(
+          "[Unigraph] Error extracting content for annotation:",
+          error
+        );
+        // Fallback: open annotation without content
+        const pageUrl = tab.url || "";
+        const encodedPageUrl = encodeURIComponent(pageUrl);
+        const annotationUrl = `annotation.html?pageUrl=${encodedPageUrl}`;
+        chrome.windows.create({
+          url: annotationUrl,
+          type: "popup",
+          width: 400,
+          height: 500,
+          focused: true,
+        });
+      }
       return;
     }
     // --- Unigraph: Save page as screenshot ---
@@ -939,9 +952,9 @@ chrome.contextMenus.onClicked.addListener(
   }
 );
 
-// Function to download a webpage as a single HTML file
-async function downloadWebpageAsHTML(tab: chrome.tabs.Tab) {
-  if (!tab.id) return;
+// Function to extract HTML content from a webpage
+async function extractWebpageHTML(tab: chrome.tabs.Tab): Promise<string> {
+  if (!tab.id) return "";
 
   try {
     // Execute script to get the complete HTML with inlined resources
@@ -1286,7 +1299,19 @@ async function downloadWebpageAsHTML(tab: chrome.tabs.Tab) {
       },
     });
 
-    const html = result[0].result ?? "";
+    return result[0].result ?? "";
+  } catch (error) {
+    console.error("[Unigraph] Error extracting webpage HTML:", error);
+    return "";
+  }
+}
+
+// Function to download a webpage as a single HTML file
+async function downloadWebpageAsHTML(tab: chrome.tabs.Tab) {
+  if (!tab.id) return;
+
+  try {
+    const html = await extractWebpageHTML(tab);
 
     // Generate filename from page title or URL
     const filename = `${tab.title || "webpage"}.html`.replace(
