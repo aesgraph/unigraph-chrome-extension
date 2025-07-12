@@ -152,47 +152,50 @@ chrome.runtime.onMessage.addListener(
       const { rect, devicePixelRatio, pageUrl, title, scrollX, scrollY } =
         message;
 
-      // Capture screenshot of the current tab
-      chrome.tabs
-        .captureVisibleTab(sender.tab.windowId, {
-          format: "png",
-          quality: 80,
-        })
-        .then((dataUrl) => {
-          console.log(
-            "[Unigraph] Screenshot captured successfully, sending to content script"
-          );
+      // Add a small delay to ensure overlay is removed before capturing screenshot
+      setTimeout(() => {
+        // Capture screenshot of the current tab
+        chrome.tabs
+          .captureVisibleTab(sender.tab.windowId, {
+            format: "png",
+            quality: 80,
+          })
+          .then((dataUrl) => {
+            console.log(
+              "[Unigraph] Screenshot captured successfully, sending to content script"
+            );
 
-          // Send screenshot back to content script for cropping
-          chrome.tabs
-            .sendMessage(sender.tab.id, {
-              type: "unigraph_area_capture_screenshot",
-              dataUrl,
-              rect,
-              devicePixelRatio,
-              pageUrl,
-              title,
-              scrollX,
-              scrollY,
-            })
-            .then(() => {
-              console.log(
-                "[Unigraph] Screenshot sent to content script successfully"
-              );
-            })
-            .catch((error) => {
-              console.error(
-                "[Unigraph] Failed to send screenshot to content script:",
-                error
-              );
-            });
-        })
-        .catch((error) => {
-          console.error(
-            "[Unigraph] Failed to capture screenshot for area capture:",
-            error
-          );
-        });
+            // Send screenshot back to content script for cropping
+            chrome.tabs
+              .sendMessage(sender.tab.id, {
+                type: "unigraph_area_capture_screenshot",
+                dataUrl,
+                rect,
+                devicePixelRatio,
+                pageUrl,
+                title,
+                scrollX,
+                scrollY,
+              })
+              .then(() => {
+                console.log(
+                  "[Unigraph] Screenshot sent to content script successfully"
+                );
+              })
+              .catch((error) => {
+                console.error(
+                  "[Unigraph] Failed to send screenshot to content script:",
+                  error
+                );
+              });
+          })
+          .catch((error) => {
+            console.error(
+              "[Unigraph] Failed to capture screenshot for area capture:",
+              error
+            );
+          });
+      }, 150); // 150ms delay to ensure overlay is removed
 
       return true; // Keep message channel open for async response
     }

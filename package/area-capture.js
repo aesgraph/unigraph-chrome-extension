@@ -56,9 +56,15 @@
     const y = Math.min(startY, endY);
     const w = Math.abs(startX - endX);
     const h = Math.abs(startY - endY);
-    // Clean up
-    document.body.removeChild(overlay);
+
+    // Remove overlay immediately to avoid capturing it in screenshot
+    if (document.body.contains(overlay)) {
+      document.body.removeChild(overlay);
+    }
+
+    // Clean up state
     window.__unigraphAreaCaptureActive = false;
+
     // Send coordinates to background
     console.log("Area selected, sending message to background", { x, y, w, h });
     chrome.runtime.sendMessage({
