@@ -411,17 +411,22 @@ try {
           // PDF annotation - save to webpages table with PDF URL
           const url = decodeURIComponent(pdfUrlParam);
           const title = document.title || "PDF Document";
-          await (window as any).saveWebpage({
-            url,
-            title,
-            html_content: undefined,
-            metadata: {
-              comment: primaryComment,
-              secondaryComment,
-              tags,
-              type: "pdf",
-            },
-          });
+          try {
+            await (window as any).saveWebpage({
+              url,
+              title,
+              html_content: undefined,
+              metadata: {
+                comment: primaryComment,
+                secondaryComment,
+                tags,
+                type: "pdf",
+              },
+            });
+          } catch (e) {
+            alert("Failed to save PDF: " + ((e as any).message || e));
+            return;
+          }
         } else if (pageUrlParam && !textParam && !imageUrlParam) {
           // Webpage annotation (no selected text or image) - save to webpages table
           const url = decodeURIComponent(pageUrlParam);
@@ -466,4 +471,18 @@ try {
   }
 } catch (err: any) {
   console.error("Critical error: " + err.message);
+}
+
+// Auto-resize primary annotation textarea
+const primaryComment = document.getElementById("primaryComment");
+function autoResizeTextarea(el: HTMLElement) {
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 220) + "px";
+}
+if (primaryComment) {
+  primaryComment.addEventListener("input", function () {
+    autoResizeTextarea(primaryComment);
+  });
+  // Initial resize
+  autoResizeTextarea(primaryComment);
 }
