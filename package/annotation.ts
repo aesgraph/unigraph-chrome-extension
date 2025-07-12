@@ -342,6 +342,12 @@ try {
             html_content = document.documentElement.outerHTML;
           } catch (e) {}
           const screenshot_url = decodeURIComponent(imageUrlParam);
+
+          // Check if we'll be saving an annotation
+          const willSaveAnnotation =
+            primaryComment || secondaryComment || (tags && tags.length > 0);
+
+          // Try to save webpage
           try {
             await (window as any).saveWebpage({
               url,
@@ -354,30 +360,35 @@ try {
                 tags,
               },
             });
-            if (
-              primaryComment ||
-              secondaryComment ||
-              (tags && tags.length > 0)
-            ) {
-              console.log(
-                "Saving annotation with comments and tags",
-                primaryComment,
-                secondaryComment,
-                tags
-              );
+          } catch (e) {
+            const errorMessage = (e as any).message || e;
+            if (errorMessage.includes("already saved") && willSaveAnnotation) {
+              console.log("Webpage already exists, continuing with annotation");
+            } else {
+              alert("Failed to save webpage: " + errorMessage);
+              return;
+            }
+          }
+
+          // Save annotation if we have comments/tags
+          if (willSaveAnnotation) {
+            console.log(
+              "Saving annotation with comments and tags",
+              primaryComment,
+              secondaryComment,
+              tags
+            );
+            try {
               await (window as any).saveAnnotation({
                 pageUrl: url,
                 comment: primaryComment,
                 secondaryComment,
                 tags,
               });
+            } catch (e) {
+              alert("Failed to save annotation: " + ((e as any).message || e));
+              return;
             }
-          } catch (e) {
-            alert(
-              "Failed to save webpage or annotation: " +
-                ((e as any).message || e)
-            );
-            return;
           }
         } else if (imageUrlParam) {
           await (window as any).saveAnnotation({
