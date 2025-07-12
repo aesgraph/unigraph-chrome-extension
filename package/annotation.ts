@@ -366,6 +366,7 @@ try {
               console.log("Webpage already exists, continuing with annotation");
             } else {
               alert("Failed to save webpage: " + errorMessage);
+              window.close();
               return;
             }
           }
