@@ -17,6 +17,7 @@ try {
   const imageUrlParam = params.get("imageUrl");
   const textParam = params.get("text");
   const pageUrlParam = params.get("pageUrl");
+  const pdfUrlParam = params.get("pdfUrl");
   const imageOrTextContainer = document.getElementById("imageOrTextContainer");
 
   if (imageUrlParam && imageOrTextContainer) {
@@ -47,6 +48,28 @@ try {
       textDiv.textContent = textParam;
       imageOrTextContainer.appendChild(textDiv);
     }
+  } else if (pdfUrlParam && imageOrTextContainer) {
+    // For PDF annotation, show a labeled, read-only field for PDF URL
+    const urlLabel = document.createElement("label");
+    urlLabel.textContent = "PDF URL";
+    urlLabel.setAttribute("for", "pdfUrlDisplay");
+    urlLabel.style.fontWeight = "500";
+    urlLabel.style.display = "block";
+    urlLabel.style.marginBottom = "2px";
+    const urlInput = document.createElement("input");
+    urlInput.type = "text";
+    urlInput.id = "pdfUrlDisplay";
+    urlInput.value = decodeURIComponent(pdfUrlParam);
+    urlInput.readOnly = true;
+    urlInput.style.width = "100%";
+    urlInput.style.background = "#f7f7f7";
+    urlInput.style.border = "1px solid #e0e0e0";
+    urlInput.style.borderRadius = "4px";
+    urlInput.style.padding = "4px 8px";
+    urlInput.style.fontSize = "13px";
+    urlInput.style.marginBottom = "10px";
+    imageOrTextContainer.appendChild(urlLabel);
+    imageOrTextContainer.appendChild(urlInput);
   } else if (pageUrlParam && imageOrTextContainer) {
     // For webpage annotation, show a labeled, read-only field for Page URL
     const urlLabel = document.createElement("label");
@@ -73,8 +96,16 @@ try {
 
   // Handle URL param
   const urlParam = params.get("pageUrl");
+  const pdfUrlParamForDisplay = params.get("pdfUrl");
   const pageUrlElem = document.getElementById("pageUrl");
-  if (urlParam && pageUrlElem) {
+  if (pdfUrlParamForDisplay && pageUrlElem) {
+    try {
+      const decodedUrl = decodeURIComponent(pdfUrlParamForDisplay);
+      pageUrlElem.textContent = decodedUrl;
+    } catch (e) {
+      pageUrlElem.textContent = pdfUrlParamForDisplay;
+    }
+  } else if (urlParam && pageUrlElem) {
     try {
       const decodedUrl = decodeURIComponent(urlParam);
       pageUrlElem.textContent = decodedUrl;
@@ -328,9 +359,10 @@ try {
               "secondaryComment"
             ) as HTMLTextAreaElement | null
           )?.value || "";
-        const pageUrl =
-          (document.getElementById("pageUrl") as HTMLElement | null)
-            ?.textContent || "";
+        const pageUrl = pdfUrlParam
+          ? decodeURIComponent(pdfUrlParam)
+          : (document.getElementById("pageUrl") as HTMLElement | null)
+              ?.textContent || "";
 
         // If image annotation, save image_url in data field, no selectedText
         if (imageUrlParam && pageUrlParam && !textParam) {
@@ -374,6 +406,21 @@ try {
             comment: primaryComment,
             secondaryComment,
             tags,
+          });
+        } else if (pdfUrlParam) {
+          // PDF annotation - save to webpages table with PDF URL
+          const url = decodeURIComponent(pdfUrlParam);
+          const title = document.title || "PDF Document";
+          await (window as any).saveWebpage({
+            url,
+            title,
+            html_content: undefined,
+            metadata: {
+              comment: primaryComment,
+              secondaryComment,
+              tags,
+              type: "pdf",
+            },
           });
         } else if (pageUrlParam && !textParam && !imageUrlParam) {
           // Webpage annotation (no selected text or image) - save to webpages table

@@ -89,6 +89,11 @@ async function createContextMenus(isLoggedIn: boolean) {
           title: "Save area as image",
           contexts: ["page"],
         });
+        chrome.contextMenus.create({
+          id: "savePdfToUnigraph",
+          title: "Save PDF",
+          contexts: ["link", "page", "all"],
+        });
         console.log(
           "[Unigraph] Created full context menu with user info and logout"
         );
@@ -562,6 +567,222 @@ chrome.contextMenus.onClicked.addListener(
           );
         });
 
+      return;
+    }
+    // --- Unigraph: Save PDF ---
+    if (info.menuItemId === "savePdfToUnigraph") {
+      let pdfUrl: string | undefined;
+
+      // Check if we have a link URL (when right-clicking on a PDF link)
+      if (info.linkUrl && info.linkUrl.toLowerCase().endsWith(".pdf")) {
+        pdfUrl = info.linkUrl;
+      }
+      // Check if we're on a PDF page
+      else if (tab && tab.url && tab.url.toLowerCase().endsWith(".pdf")) {
+        pdfUrl = tab.url;
+      }
+      // Check if we have a src URL (when right-clicking on a PDF element)
+      else if (info.srcUrl && info.srcUrl.toLowerCase().endsWith(".pdf")) {
+        pdfUrl = info.srcUrl;
+      }
+      // Check if we're on a page that might contain PDF elements
+      else if (tab && tab.url) {
+        console.log(
+          "[Unigraph] Attempting to extract PDF URL from page:",
+          tab.url
+        );
+
+        // Try to extract PDF URL from the page by injecting a script
+        chrome.scripting
+          .executeScript({
+            target: { tabId: tab.id! },
+            func: () => {
+              console.log("[Unigraph] PDF detection script running");
+
+              // Look for PDF embed elements with original-url attribute (Chrome PDF viewer)
+              const pdfEmbeds = document.querySelectorAll(
+                'embed[original-url*=".pdf"], embed[original-url*="/pdf/"]'
+              );
+              console.log(
+                "[Unigraph] Found PDF embeds with original-url:",
+                pdfEmbeds.length
+              );
+              if (pdfEmbeds.length > 0) {
+                const embed = pdfEmbeds[0] as HTMLEmbedElement;
+                const originalUrl = embed.getAttribute("original-url");
+                console.log("[Unigraph] Original URL found:", originalUrl);
+                if (originalUrl) {
+                  return originalUrl;
+                }
+              }
+
+              // Look for PDF embed elements with src containing .pdf or /pdf/
+              const pdfEmbedsSrc = document.querySelectorAll(
+                'embed[src*=".pdf"], embed[src*="/pdf/"]'
+              );
+              console.log(
+                "[Unigraph] Found PDF embeds with src:",
+                pdfEmbedsSrc.length
+              );
+              if (pdfEmbedsSrc.length > 0) {
+                const embed = pdfEmbedsSrc[0] as HTMLEmbedElement;
+                console.log("[Unigraph] Src URL found:", embed.src);
+                return embed.src;
+              }
+
+              // Look for PDF embed elements with type containing pdf
+              const pdfEmbedsType =
+                document.querySelectorAll('embed[type*="pdf"]');
+              console.log(
+                "[Unigraph] Found PDF embeds with type:",
+                pdfEmbedsType.length
+              );
+              if (pdfEmbedsType.length > 0) {
+                const embed = pdfEmbedsType[0] as HTMLEmbedElement;
+                const result =
+                  embed.src ||
+                  embed.getAttribute("data") ||
+                  embed.getAttribute("original-url");
+                console.log("[Unigraph] Type-based URL found:", result);
+                return result;
+              }
+
+              // Look for PDF object elements
+              const pdfObjects = document.querySelectorAll(
+                'object[data*=".pdf"], object[data*="/pdf/"]'
+              );
+              console.log("[Unigraph] Found PDF objects:", pdfObjects.length);
+              if (pdfObjects.length > 0) {
+                const obj = pdfObjects[0] as HTMLObjectElement;
+                console.log("[Unigraph] Object data found:", obj.data);
+                return obj.data;
+              }
+
+              // Look for any embed element and check its attributes for PDF URLs
+              const allEmbeds = document.querySelectorAll("embed");
+              console.log("[Unigraph] Found all embeds:", allEmbeds.length);
+              for (let i = 0; i < allEmbeds.length; i++) {
+                const embed = allEmbeds[i] as HTMLEmbedElement;
+                const originalUrl = embed.getAttribute("original-url");
+                const src = embed.src;
+                const data = embed.getAttribute("data");
+
+                console.log(
+                  "[Unigraph] Checking embed",
+                  i,
+                  "original-url:",
+                  originalUrl,
+                  "src:",
+                  src,
+                  "data:",
+                  data
+                );
+
+                if (
+                  originalUrl &&
+                  (originalUrl.includes(".pdf") ||
+                    originalUrl.includes("/pdf/"))
+                ) {
+                  console.log(
+                    "[Unigraph] Found PDF in original-url:",
+                    originalUrl
+                  );
+                  return originalUrl;
+                }
+                if (src && (src.includes(".pdf") || src.includes("/pdf/"))) {
+                  console.log("[Unigraph] Found PDF in src:", src);
+                  return src;
+                }
+                if (data && (data.includes(".pdf") || data.includes("/pdf/"))) {
+                  console.log("[Unigraph] Found PDF in data:", data);
+                  return data;
+                }
+              }
+
+              // Look for PDF links
+              const pdfLinks = document.querySelectorAll(
+                'a[href*=".pdf"], a[href*="/pdf/"]'
+              );
+              console.log("[Unigraph] Found PDF links:", pdfLinks.length);
+              if (pdfLinks.length > 0) {
+                const href = (pdfLinks[0] as HTMLAnchorElement).href;
+                console.log("[Unigraph] Link href found:", href);
+                return href;
+              }
+
+              // Check if current page URL contains .pdf or /pdf/
+              if (
+                window.location.href.toLowerCase().includes(".pdf") ||
+                window.location.href.toLowerCase().includes("/pdf/")
+              ) {
+                console.log(
+                  "[Unigraph] Current URL contains PDF:",
+                  window.location.href
+                );
+                return window.location.href;
+              }
+
+              console.log("[Unigraph] No PDF URL found in page");
+              return null;
+            },
+          })
+          .then((results) => {
+            console.log("[Unigraph] Script execution results:", results);
+            const result = results[0]?.result;
+            console.log("[Unigraph] Extracted result:", result);
+            if (result) {
+              pdfUrl = result;
+            }
+
+            if (pdfUrl) {
+              // Create annotation URL with PDF URL
+              const encodedPdfUrl = encodeURIComponent(pdfUrl);
+              const annotationUrl = `annotation.html?pdfUrl=${encodedPdfUrl}&pageUrl=${encodedPdfUrl}`;
+              console.log(
+                "[Unigraph] Creating annotation window with URL:",
+                annotationUrl
+              );
+
+              chrome.windows.create({
+                url: annotationUrl,
+                type: "popup",
+                width: 400,
+                height: 500,
+                focused: true,
+              });
+
+              console.log(
+                "[Unigraph] Opened annotation window for PDF:",
+                pdfUrl
+              );
+            } else {
+              console.log("[Unigraph] No PDF URL found in page content");
+            }
+          })
+          .catch((error) => {
+            console.error("[Unigraph] Error extracting PDF URL:", error);
+          });
+
+        return; // Return early since we're handling this asynchronously
+      }
+
+      if (pdfUrl) {
+        // Create annotation URL with PDF URL
+        const encodedPdfUrl = encodeURIComponent(pdfUrl);
+        const annotationUrl = `annotation.html?pdfUrl=${encodedPdfUrl}&pageUrl=${encodedPdfUrl}`;
+
+        chrome.windows.create({
+          url: annotationUrl,
+          type: "popup",
+          width: 400,
+          height: 500,
+          focused: true,
+        });
+
+        console.log("[Unigraph] Opened annotation window for PDF:", pdfUrl);
+      } else {
+        console.log("[Unigraph] No PDF URL found in context menu data");
+      }
       return;
     }
   }
