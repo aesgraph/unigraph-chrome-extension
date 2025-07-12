@@ -1,7 +1,21 @@
 // area-capture.js
 (function () {
   console.log("Area capture script loaded");
-  if (window.__unigraphAreaCaptureActive) return;
+
+  // Prevent multiple instances
+  if (window.__unigraphAreaCaptureActive) {
+    console.log("[Unigraph] Area capture already active, skipping");
+    return;
+  }
+
+  // Clean up any existing listeners
+  if (window.__unigraphAreaCaptureListener) {
+    console.log("[Unigraph] Removing existing message listener");
+    chrome.runtime.onMessage.removeListener(
+      window.__unigraphAreaCaptureListener
+    );
+  }
+
   window.__unigraphAreaCaptureActive = true;
 
   // Create overlay
@@ -80,8 +94,8 @@
 
   overlay.addEventListener("mousedown", onMouseDown);
 
-  // Listen for screenshot from background, crop, and open annotation window
-  chrome.runtime.onMessage.addListener(function (msg) {
+  // Create message listener function
+  const messageListener = function (msg) {
     console.log("[Unigraph] Content script received message:", msg);
 
     if (msg && msg.type === "unigraph_area_capture_screenshot") {
@@ -187,5 +201,11 @@
       console.log("[Unigraph] Setting image source for cropping");
       img.src = dataUrl;
     }
-  });
+  };
+
+  // Store listener reference for cleanup
+  window.__unigraphAreaCaptureListener = messageListener;
+
+  // Listen for screenshot from background, crop, and open annotation window
+  chrome.runtime.onMessage.addListener(messageListener);
 })();

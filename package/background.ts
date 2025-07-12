@@ -525,10 +525,43 @@ chrome.contextMenus.onClicked.addListener(
       return;
     }
     if (info.menuItemId === "saveAreaAsImage" && tab && tab.id) {
-      chrome.scripting.executeScript({
-        target: { tabId: Number(tab.id) },
-        files: ["area-capture.js"],
-      });
+      console.log(
+        "[Unigraph] Save area as image clicked, checking if already active"
+      );
+
+      // First check if area capture is already active in the tab
+      chrome.scripting
+        .executeScript({
+          target: { tabId: Number(tab.id) },
+          func: () => {
+            return (window as any).__unigraphAreaCaptureActive || false;
+          },
+        })
+        .then((results) => {
+          const isActive = results[0]?.result;
+          console.log("[Unigraph] Area capture active status:", isActive);
+
+          if (isActive) {
+            console.log(
+              "[Unigraph] Area capture already active, skipping injection"
+            );
+            return;
+          }
+
+          // Inject the script only if not already active
+          console.log("[Unigraph] Injecting area capture script");
+          return chrome.scripting.executeScript({
+            target: { tabId: Number(tab.id) },
+            files: ["area-capture.js"],
+          });
+        })
+        .catch((error) => {
+          console.error(
+            "[Unigraph] Error checking or injecting area capture script:",
+            error
+          );
+        });
+
       return;
     }
   }
