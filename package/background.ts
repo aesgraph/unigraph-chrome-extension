@@ -28,7 +28,7 @@ async function createContextMenus(isLoggedIn: boolean) {
     if (!isLoggedIn) {
       chrome.contextMenus.create({
         id: "loginToUnigraph",
-        title: "Log in to Unigraph",
+        title: "Log in",
         contexts: ["all"],
       });
       chrome.contextMenus.create({
@@ -140,7 +140,7 @@ async function validateSessionBeforeAction(): Promise<boolean> {
       iconUrl: "icons/icon16.PNG",
       title: "Unigraph",
       message:
-        "Please log in to use this feature. Right-click and select 'Log in to Unigraph'.",
+        "Please log in to use this feature. Right-click and select 'Log in'.",
     });
     return false;
   }
@@ -386,7 +386,7 @@ chrome.action.onClicked.addListener(async (tab) => {
       iconUrl: "icons/icon16.PNG",
       title: "Unigraph",
       message:
-        "Please log in to use the extension. Right-click and select 'Log in to Unigraph'.",
+        "Please log in to use the extension. Right-click and select 'Log in'.",
     });
     return;
   }
@@ -432,7 +432,7 @@ chrome.action.onClicked.addListener(async (tab) => {
 chrome.contextMenus.onClicked.addListener(
   async (info: chrome.contextMenus.OnClickData, tab?: chrome.tabs.Tab) => {
     if (info.menuItemId === "loginToUnigraph") {
-      console.log("[Unigraph] 'Log in to Unigraph' menu clicked");
+      console.log("[Unigraph] 'Log in' menu clicked");
       // @ts-ignore
       if (typeof (self as any).authenticateWithGoogle === "function") {
         console.log("[Unigraph] Calling authenticateWithGoogle...");
