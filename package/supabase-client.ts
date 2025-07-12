@@ -300,10 +300,10 @@ async function uploadScreenshot(base64Data: string): Promise<string> {
       .upload(filename, fileData, { contentType: "image/png" });
     if (error) throw error;
     // Get public URL
-    const { publicURL } = supabase.storage
+    const { publicUrl } = supabase.storage
       .from("screenshots")
       .getPublicUrl(filename).data;
-    return publicURL;
+    return publicUrl;
   } catch (error) {
     console.error("Error uploading screenshot:", error);
     throw error;
