@@ -949,68 +949,113 @@ async function downloadWebpageAsHTML(tab: chrome.tabs.Tab) {
       target: { tabId: tab.id },
       func: () => {
         return new Promise<string>((resolve) => {
-          // Process all images and convert to data URLs
-          const images = document.querySelectorAll("img");
-          let imagesToProcess = images.length;
+          // Get all CSS from stylesheets
+          function getAllCSS(): string {
+            let css = "";
 
-          if (imagesToProcess === 0) {
-            // No images to process, return the HTML directly
-            resolve(document.documentElement.outerHTML);
-            return;
-          }
+            // Get all stylesheets
+            const styleSheets = Array.from(document.styleSheets);
 
-          // Process each image
-          images.forEach((img) => {
-            if (img.src) {
+            for (const sheet of styleSheets) {
               try {
-                const canvas = document.createElement("canvas");
-                const ctx = canvas.getContext("2d");
-                const imgObj = new Image();
+                // Get all CSS rules from the stylesheet
+                const rules = Array.from(sheet.cssRules || sheet.rules || []);
 
-                imgObj.onload = function () {
-                  canvas.width = imgObj.width;
-                  canvas.height = imgObj.height;
-                  ctx?.drawImage(imgObj, 0, 0);
-
-                  try {
-                    // Replace src with data URL
-                    img.setAttribute("src", canvas.toDataURL("image/png"));
-                  } catch (e) {
-                    console.error("Error converting image to data URL:", e);
-                  }
-
-                  imagesToProcess--;
-                  if (imagesToProcess === 0) {
-                    // All images processed, return the HTML
-                    resolve(document.documentElement.outerHTML);
-                  }
-                };
-
-                imgObj.onerror = function () {
-                  console.error("Error loading image:", img.src);
-                  imagesToProcess--;
-                  if (imagesToProcess === 0) {
-                    resolve(document.documentElement.outerHTML);
-                  }
-                };
-
-                // Set crossOrigin to anonymous to avoid CORS issues when possible
-                imgObj.crossOrigin = "anonymous";
-                imgObj.src = img.src;
+                for (const rule of rules) {
+                  css += rule.cssText + "\n";
+                }
               } catch (e) {
-                console.error("Error processing image:", e);
-                imagesToProcess--;
-                if (imagesToProcess === 0) {
-                  resolve(document.documentElement.outerHTML);
+                console.warn("[Unigraph] Could not access stylesheet:", e);
+                // For cross-origin stylesheets, we can't access the rules
+                // We'll include the href if available
+                if (sheet.href) {
+                  css += `/* External stylesheet: ${sheet.href} */\n`;
                 }
               }
-            } else {
+            }
+
+            return css;
+          }
+
+          // Function to convert image to base64 using fetch
+          async function imageToBase64(url: string): Promise<string> {
+            try {
+              const response = await fetch(url);
+              const blob = await response.blob();
+              return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+              });
+            } catch (error) {
+              console.warn(
+                `[Unigraph] Failed to convert image to base64: ${url}`,
+                error
+              );
+              return url; // Return original URL if conversion fails
+            }
+          }
+
+          // Process all images and convert to base64
+          async function processImages() {
+            const images = document.querySelectorAll("img");
+            let imagesToProcess = images.length;
+
+            if (imagesToProcess === 0) {
+              // No images to process, return the HTML directly
+              resolve(createCompleteHTML());
+              return;
+            }
+
+            // Process each image
+            for (const img of Array.from(images)) {
+              if (img.src && !img.src.startsWith("data:")) {
+                try {
+                  const base64Url = await imageToBase64(img.src);
+                  img.setAttribute("src", base64Url);
+                  console.log(
+                    `[Unigraph] Converted image to base64: ${img.src.substring(
+                      0,
+                      50
+                    )}...`
+                  );
+                } catch (e) {
+                  console.warn(
+                    `[Unigraph] Failed to process image: ${img.src}`,
+                    e
+                  );
+                }
+              }
               imagesToProcess--;
               if (imagesToProcess === 0) {
-                resolve(document.documentElement.outerHTML);
+                resolve(createCompleteHTML());
               }
             }
-          });
+          }
+
+          // Function to create complete HTML with embedded CSS
+          function createCompleteHTML(): string {
+            const css = getAllCSS();
+            const html = document.documentElement.outerHTML;
+
+            return `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>${document.title || "Downloaded Webpage"}</title>
+    <style>
+${css}
+    </style>
+</head>
+<body>
+${document.body.innerHTML}
+</body>
+</html>`;
+          }
+
+          // Start processing images
+          processImages();
         });
       },
     });
