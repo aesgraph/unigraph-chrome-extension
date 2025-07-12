@@ -354,12 +354,24 @@ try {
                 tags,
               },
             });
-            await (window as any).saveAnnotation({
-              pageUrl: url,
-              comment: primaryComment,
-              secondaryComment,
-              tags,
-            });
+            if (
+              primaryComment ||
+              secondaryComment ||
+              (tags && tags.length > 0)
+            ) {
+              console.log(
+                "Saving annotation with comments and tags",
+                primaryComment,
+                secondaryComment,
+                tags
+              );
+              await (window as any).saveAnnotation({
+                pageUrl: url,
+                comment: primaryComment,
+                secondaryComment,
+                tags,
+              });
+            }
           } catch (e) {
             alert(
               "Failed to save webpage or annotation: " +

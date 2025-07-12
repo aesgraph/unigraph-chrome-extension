@@ -256,6 +256,7 @@ async function saveWebpage(webpage: {
     const { data: result, error } = await supabase
       .from("webpages")
       .insert([insertData]);
+    console.log("Webpage saved:", result, error);
     if (error) throw error;
     return result;
   } catch (error) {
