@@ -43,14 +43,26 @@ interface AuthResult {
   user: SupabaseSession["user"];
 }
 
-// Helper function to initialize the Supabase client
+// Singleton Supabase client instance
+let supabaseClient: any = null;
+
+// Helper function to initialize the Supabase client (singleton pattern)
 async function initSupabase(): Promise<any> {
+  // Return existing client if already initialized
+  if (supabaseClient) {
+    return supabaseClient;
+  }
+
   // Use the globally available Supabase client from the UMD bundle
   if (
     typeof (self as any).supabase !== "undefined" &&
     (self as any).supabase.createClient
   ) {
-    return (self as any).supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    supabaseClient = (self as any).supabase.createClient(
+      SUPABASE_URL,
+      SUPABASE_ANON_KEY
+    );
+    return supabaseClient;
   } else {
     throw new Error(
       "Supabase client not loaded. Please check if supabase-bundle.js is loaded correctly."
