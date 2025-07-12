@@ -31,7 +31,20 @@ async function createContextMenus(isLoggedIn: boolean) {
         title: "Log in to Unigraph",
         contexts: ["all"],
       });
-      console.log("[Unigraph] Created 'Log in' context menu");
+      chrome.contextMenus.create({
+        id: "showUnigraphPanel",
+        title: "Open App",
+        contexts: ["all"],
+      });
+      // Add Dev App menu if localhost:3000 is live
+      if (await isDevServerLive()) {
+        chrome.contextMenus.create({
+          id: "openDevApp",
+          title: "Open Dev App",
+          contexts: ["all"],
+        });
+      }
+      console.log("[Unigraph] Created logged-out context menu");
       isCreatingMenus = false;
     } else {
       chrome.storage.local.get(["user_info"], async (data: any) => {
@@ -134,8 +147,13 @@ async function isUserLoggedIn(): Promise<boolean> {
     try {
       chrome.storage.local.get(["supabase_session"], async (data: any) => {
         const session = data.supabase_session;
+        console.log(
+          "[Unigraph] Checking login status - session exists:",
+          !!session
+        );
 
         if (!session || !session.access_token) {
+          console.log("[Unigraph] No session or access token found");
           resolve(false);
           return;
         }
@@ -183,14 +201,32 @@ async function isUserLoggedIn(): Promise<boolean> {
 // Initial context menu creation
 isUserLoggedIn().then(createContextMenus);
 
-// Periodic session check (every 5 minutes)
+// Periodic session check and context menu refresh (every 2 minutes)
 setInterval(async () => {
-  const wasLoggedIn = await isUserLoggedIn();
-  if (!wasLoggedIn) {
-    console.log("[Unigraph] Session expired, updating context menu");
-    createContextMenus(false);
+  const isLoggedIn = await isUserLoggedIn();
+  console.log("[Unigraph] Periodic session check - logged in:", isLoggedIn);
+  createContextMenus(isLoggedIn);
+}, 2 * 60 * 1000); // 2 minutes
+
+// More frequent context menu refresh for better responsiveness (every 60 seconds)
+setInterval(async () => {
+  const isLoggedIn = await isUserLoggedIn();
+  createContextMenus(isLoggedIn);
+}, 60 * 1000); // 60 seconds
+
+// Listen for storage changes to immediately refresh context menu
+chrome.storage.onChanged.addListener((changes, namespace) => {
+  if (
+    namespace === "local" &&
+    (changes.supabase_session || changes.user_info)
+  ) {
+    console.log("[Unigraph] Session storage changed, refreshing context menu");
+    // Add a small delay to ensure storage operation completes
+    setTimeout(() => {
+      isUserLoggedIn().then(createContextMenus);
+    }, 100);
   }
-}, 5 * 60 * 1000); // 5 minutes
+});
 
 chrome.runtime.onStartup.addListener(() => {
   isUserLoggedIn().then(createContextMenus);
@@ -326,8 +362,10 @@ chrome.action.onClicked.addListener(async (tab) => {
     return;
   }
 
-  // Check if user is logged in
+  // Refresh context menu before checking login status
   const isLoggedIn = await isUserLoggedIn();
+  createContextMenus(isLoggedIn);
+
   if (!isLoggedIn) {
     // Show login notification
     chrome.notifications?.create({
@@ -402,6 +440,7 @@ chrome.contextMenus.onClicked.addListener(
                     result.session
                   );
                   createContextMenus(true);
+                  console.log("[Unigraph] Context menu refreshed after login");
                 }
               );
             } else {
@@ -415,7 +454,7 @@ chrome.contextMenus.onClicked.addListener(
             console.error("[Unigraph] Authentication failed:", err);
             chrome.notifications?.create({
               type: "basic",
-              iconUrl: "icon16.png",
+              iconUrl: "icons/icon16.png",
               title: "Unigraph Login Error",
               message: "Failed to log in. See background page for details.",
             });
@@ -424,7 +463,7 @@ chrome.contextMenus.onClicked.addListener(
         console.error("[Unigraph] authenticateWithGoogle not loaded");
         chrome.notifications?.create({
           type: "basic",
-          iconUrl: "icon16.png",
+          iconUrl: "icons/icon16.png",
           title: "Unigraph Error",
           message: "Login function not loaded. Try reloading the extension.",
         });
@@ -434,9 +473,10 @@ chrome.contextMenus.onClicked.addListener(
     if (info.menuItemId === "logoutOfUnigraph") {
       chrome.storage.local.remove(["supabase_session", "user_info"], () => {
         createContextMenus(false);
+        console.log("[Unigraph] Context menu refreshed after logout");
         chrome.notifications?.create({
           type: "basic",
-          iconUrl: "icon16.png",
+          iconUrl: "icons/icon16.png",
           title: "Unigraph",
           message: "You have been logged out.",
         });
@@ -592,7 +632,7 @@ chrome.contextMenus.onClicked.addListener(
     if (svgUrl && svgUrl.startsWith("data:image")) {
       chrome.notifications?.create({
         type: "basic",
-        iconUrl: "icon16.png",
+        iconUrl: "icons/icon16.png",
         title: "Unigraph",
         message:
           "Cannot use base64-encoded SVGs. Try using an online-hosted SVG.",
@@ -607,7 +647,7 @@ chrome.contextMenus.onClicked.addListener(
     } else if (info.menuItemId === "two") {
       chrome.notifications?.create({
         type: "basic",
-        iconUrl: "icon16.png",
+        iconUrl: "icons/icon16.png",
         title: "Unigraph",
         message: "The selected URL is not an SVG file.",
       });
