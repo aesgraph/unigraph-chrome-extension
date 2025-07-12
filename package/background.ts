@@ -56,9 +56,34 @@ async function createContextMenus(isLoggedIn: boolean) {
           contexts: ["page"],
         });
         chrome.contextMenus.create({
+          id: "createAnnotation",
+          title: "Create Annotation",
+          contexts: ["selection", "image"],
+        });
+        chrome.contextMenus.create({
+          id: "separator1",
+          type: "separator",
+          contexts: ["all"],
+        });
+        chrome.contextMenus.create({
           id: "savePageAsScreenshot",
           title: "Save screenshot",
           contexts: ["page", "image"],
+        });
+        chrome.contextMenus.create({
+          id: "saveAreaAsImage",
+          title: "Save area as image",
+          contexts: ["page"],
+        });
+        chrome.contextMenus.create({
+          id: "savePdfToUnigraph",
+          title: "Save PDF",
+          contexts: ["link", "page", "all"],
+        });
+        chrome.contextMenus.create({
+          id: "separator2",
+          type: "separator",
+          contexts: ["all"],
         });
         chrome.contextMenus.create({
           id: "two",
@@ -79,21 +104,6 @@ async function createContextMenus(isLoggedIn: boolean) {
             contexts: ["all"],
           });
         }
-        chrome.contextMenus.create({
-          id: "createAnnotation",
-          title: "Create Annotation",
-          contexts: ["selection", "image"],
-        });
-        chrome.contextMenus.create({
-          id: "saveAreaAsImage",
-          title: "Save area as image",
-          contexts: ["page"],
-        });
-        chrome.contextMenus.create({
-          id: "savePdfToUnigraph",
-          title: "Save PDF",
-          contexts: ["link", "page", "all"],
-        });
         console.log(
           "[Unigraph] Created full context menu with user info and logout"
         );
