@@ -84,6 +84,11 @@ async function createContextMenus(isLoggedIn: boolean) {
           title: "Create Annotation",
           contexts: ["selection", "image"],
         });
+        chrome.contextMenus.create({
+          id: "saveAreaAsImage",
+          title: "Save area as image",
+          contexts: ["page"],
+        });
         console.log(
           "[Unigraph] Created full context menu with user info and logout"
         );
@@ -111,9 +116,11 @@ chrome.runtime.onInstalled.addListener(() => {
   isUserLoggedIn().then(createContextMenus);
 });
 
-// Listen for resize requests from annotation popup
+// Listen for resize requests from annotation popup and area capture requests
 chrome.runtime.onMessage.addListener(
   (message: any, sender: any, sendResponse: any) => {
+    console.log("[Unigraph] Background received message:", message);
+
     if (
       message &&
       message.type === "resizeAnnotationWindow" &&
@@ -135,6 +142,90 @@ chrome.runtime.onMessage.addListener(
           chrome.windows.update(win.id!, { height, width });
         }
       });
+    }
+
+    // Handle area capture request from content script
+    if (message && message.type === "unigraph_area_capture" && sender.tab) {
+      console.log("[Unigraph] Area capture request received:", message);
+      console.log("[Unigraph] Sender tab:", sender.tab);
+
+      const { rect, devicePixelRatio, pageUrl, title, scrollX, scrollY } =
+        message;
+
+      // Capture screenshot of the current tab
+      chrome.tabs
+        .captureVisibleTab(sender.tab.windowId, {
+          format: "png",
+          quality: 80,
+        })
+        .then((dataUrl) => {
+          console.log(
+            "[Unigraph] Screenshot captured successfully, sending to content script"
+          );
+
+          // Send screenshot back to content script for cropping
+          chrome.tabs
+            .sendMessage(sender.tab.id, {
+              type: "unigraph_area_capture_screenshot",
+              dataUrl,
+              rect,
+              devicePixelRatio,
+              pageUrl,
+              title,
+              scrollX,
+              scrollY,
+            })
+            .then(() => {
+              console.log(
+                "[Unigraph] Screenshot sent to content script successfully"
+              );
+            })
+            .catch((error) => {
+              console.error(
+                "[Unigraph] Failed to send screenshot to content script:",
+                error
+              );
+            });
+        })
+        .catch((error) => {
+          console.error(
+            "[Unigraph] Failed to capture screenshot for area capture:",
+            error
+          );
+        });
+
+      return true; // Keep message channel open for async response
+    }
+
+    // Handle annotation window opening request from content script
+    if (message && message.type === "open_annotation_window") {
+      console.log("[Unigraph] Opening annotation window from content script");
+      console.log("[Unigraph] Annotation URL:", message.annotationUrl);
+
+      chrome.windows
+        .create({
+          url: message.annotationUrl,
+          type: "popup",
+          width: 400,
+          height: 500,
+          focused: true,
+        })
+        .then((window) => {
+          console.log(
+            "[Unigraph] Annotation window created successfully:",
+            window
+          );
+          sendResponse({ success: true, windowId: window?.id });
+        })
+        .catch((error) => {
+          console.error(
+            "[Unigraph] Failed to create annotation window:",
+            error
+          );
+          sendResponse({ success: false, error: error.message });
+        });
+
+      return true; // Keep message channel open for async response
     }
   }
 );
@@ -427,6 +518,13 @@ chrome.contextMenus.onClicked.addListener(
         top: 80,
         left: 80,
         focused: true,
+      });
+      return;
+    }
+    if (info.menuItemId === "saveAreaAsImage" && tab && tab.id) {
+      chrome.scripting.executeScript({
+        target: { tabId: Number(tab.id) },
+        files: ["area-capture.js"],
       });
       return;
     }
