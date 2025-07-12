@@ -41,35 +41,77 @@
   overlay.appendChild(selectionBox);
 
   function onMouseDown(e) {
+    console.log("[Unigraph] Mouse down event triggered", {
+      x: e.clientX,
+      y: e.clientY,
+    });
+    e.preventDefault();
+    e.stopPropagation();
+
     startX = e.clientX;
     startY = e.clientY;
+
+    // Initialize selection box
     selectionBox.style.display = "block";
+    selectionBox.style.left = startX + "px";
+    selectionBox.style.top = startY + "px";
+    selectionBox.style.width = "0px";
+    selectionBox.style.height = "0px";
+
+    // Add event listeners
     overlay.addEventListener("mousemove", onMouseMove);
     overlay.addEventListener("mouseup", onMouseUp);
+
+    // Also listen for mouse events on document in case mouse leaves overlay
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+
+    console.log("[Unigraph] Mouse down handled, drag started");
   }
 
   function onMouseMove(e) {
+    if (startX === undefined || startY === undefined) {
+      console.log("[Unigraph] Mouse move ignored - no drag started");
+      return;
+    }
+
     endX = e.clientX;
     endY = e.clientY;
     const x = Math.min(startX, endX);
     const y = Math.min(startY, endY);
     const w = Math.abs(startX - endX);
     const h = Math.abs(startY - endY);
+
     selectionBox.style.left = x + "px";
     selectionBox.style.top = y + "px";
     selectionBox.style.width = w + "px";
     selectionBox.style.height = h + "px";
+
+    console.log("[Unigraph] Mouse move", { x, y, w, h });
   }
 
   function onMouseUp(e) {
+    console.log("[Unigraph] Mouse up event triggered");
+
+    // Remove all event listeners
     overlay.removeEventListener("mousemove", onMouseMove);
     overlay.removeEventListener("mouseup", onMouseUp);
+    document.removeEventListener("mousemove", onMouseMove);
+    document.removeEventListener("mouseup", onMouseUp);
+
+    if (startX === undefined || startY === undefined) {
+      console.log("[Unigraph] Mouse up ignored - no drag started");
+      return;
+    }
+
     endX = e.clientX;
     endY = e.clientY;
     const x = Math.min(startX, endX);
     const y = Math.min(startY, endY);
     const w = Math.abs(startX - endX);
     const h = Math.abs(startY - endY);
+
+    console.log("[Unigraph] Area selection completed", { x, y, w, h });
 
     // Remove overlay immediately to avoid capturing it in screenshot
     if (document.body.contains(overlay)) {
@@ -92,7 +134,11 @@
     });
   }
 
-  overlay.addEventListener("mousedown", onMouseDown);
+  // Add a small delay to ensure overlay is fully ready
+  setTimeout(() => {
+    overlay.addEventListener("mousedown", onMouseDown);
+    console.log("[Unigraph] Area capture overlay ready for interaction");
+  }, 50);
 
   // Create message listener function
   const messageListener = function (msg) {
