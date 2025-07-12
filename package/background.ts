@@ -1177,16 +1177,8 @@ async function downloadWebpageAsHTML(tab: chrome.tabs.Tab) {
         /* Container for content - more flexible width */
         .unigraph-content-wrapper {
             width: 100%;
-            margin: 0 auto;
-            padding: 20px;
+            margin: 0;
             box-sizing: border-box;
-        }
-        
-        /* For mobile devices */
-        @media (max-width: 768px) {
-            .unigraph-content-wrapper {
-                padding: 15px;
-            }
         }
         
         img {
