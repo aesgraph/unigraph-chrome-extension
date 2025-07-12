@@ -186,12 +186,14 @@ chrome.runtime.onMessage.addListener(
                 console.log(
                   "[Unigraph] Screenshot sent to content script successfully"
                 );
+                sendResponse({ success: true });
               })
               .catch((error) => {
                 console.error(
                   "[Unigraph] Failed to send screenshot to content script:",
                   error
                 );
+                sendResponse({ success: false, error: error.message });
               });
           })
           .catch((error) => {
@@ -199,6 +201,7 @@ chrome.runtime.onMessage.addListener(
               "[Unigraph] Failed to capture screenshot for area capture:",
               error
             );
+            sendResponse({ success: false, error: error.message });
           });
       }, 150); // 150ms delay to ensure overlay is removed
 

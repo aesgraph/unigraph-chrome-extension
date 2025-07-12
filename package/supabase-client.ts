@@ -234,6 +234,7 @@ async function saveWebpage(webpage: {
       refresh_token: data.supabase_session.refresh_token,
     });
     // Check if the webpage already exists for this url
+    console.log("Checking if webpage exists:", webpage.url);
     const { data: existing, error: selectError } = await supabase
       .from("webpages")
       .select("*")
@@ -241,9 +242,11 @@ async function saveWebpage(webpage: {
       .limit(1);
     if (selectError) throw selectError;
     if (existing && existing.length > 0) {
-      // Already exists, return existing record
-      return existing[0];
+      // Already exists, throw error
+      console.log("Webpage already exists:", existing[0]);
+      throw new Error("This webpage is already saved in your database.");
     }
+    console.log("Webpage does not exist, inserting new record");
     // Insert new record
     const insertData = {
       url: webpage.url,
@@ -256,6 +259,8 @@ async function saveWebpage(webpage: {
     const { data: result, error } = await supabase
       .from("webpages")
       .insert([insertData]);
+    console.log("Webpage save result:", result);
+    console.log("Webpage save error:", error);
     if (error) throw error;
     return result;
   } catch (error) {
