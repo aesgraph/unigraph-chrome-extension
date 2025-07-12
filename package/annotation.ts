@@ -18,7 +18,26 @@ try {
   const textParam = params.get("text");
   const pageUrlParam = params.get("pageUrl");
   const pdfUrlParam = params.get("pdfUrl");
+  const hasHtmlContentParam = params.get("hasHtmlContent");
   const imageOrTextContainer = document.getElementById("imageOrTextContainer");
+
+  // Retrieve HTML content from chrome.storage if present
+  if (hasHtmlContentParam === "true") {
+    try {
+      chrome.storage.local.get(
+        ["tempHtmlContent", "tempPageUrl"],
+        function (result) {
+          if (result.tempHtmlContent) {
+            (window as any).htmlContent = result.tempHtmlContent;
+            // Clean up storage after retrieving
+            chrome.storage.local.remove(["tempHtmlContent", "tempPageUrl"]);
+          }
+        }
+      );
+    } catch (e) {
+      console.error("Error retrieving HTML content from storage:", e);
+    }
+  }
 
   if (imageUrlParam && imageOrTextContainer) {
     // Show image
@@ -370,9 +389,16 @@ try {
           const url = decodeURIComponent(pageUrlParam);
           const title = document.title;
           let html_content = undefined;
-          try {
-            html_content = document.documentElement.outerHTML;
-          } catch (e) {}
+
+          // Use stored HTML content if available (from "Save webpage" action)
+          if ((window as any).htmlContent) {
+            html_content = (window as any).htmlContent;
+          } else {
+            try {
+              html_content = document.documentElement.outerHTML;
+            } catch (e) {}
+          }
+
           const screenshot_url = decodeURIComponent(imageUrlParam);
 
           // Check if we'll be saving an annotation
@@ -491,9 +517,16 @@ try {
           const url = decodeURIComponent(pageUrlParam);
           const title = document.title;
           let html_content = undefined;
-          try {
-            html_content = document.documentElement.outerHTML;
-          } catch (e) {}
+
+          // Use stored HTML content if available (from "Save webpage" action)
+          if ((window as any).htmlContent) {
+            html_content = (window as any).htmlContent;
+          } else {
+            try {
+              html_content = document.documentElement.outerHTML;
+            } catch (e) {}
+          }
+
           await (window as any).saveWebpage({
             url,
             title,

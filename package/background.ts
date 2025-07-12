@@ -554,11 +554,17 @@ chrome.contextMenus.onClicked.addListener(
           quality: 80,
         });
 
-        // Create annotation URL with screenshot, HTML content, and page URL
+        // Store HTML content in chrome.storage for the annotation window to access
+        await chrome.storage.local.set({
+          tempHtmlContent: html,
+          tempPageUrl: pageUrl,
+        });
+
+        // Create annotation URL with screenshot and page URL (HTML content stored separately)
         const encodedImageUrl = encodeURIComponent(screenshot);
         const encodedHtml = encodeURIComponent(html);
         const encodedPageUrl = encodeURIComponent(pageUrl);
-        const annotationUrl = `annotation.html?imageUrl=${encodedImageUrl}&htmlContent=${encodedHtml}&pageUrl=${encodedPageUrl}`;
+        const annotationUrl = `annotation.html?imageUrl=${encodedImageUrl}&pageUrl=${encodedPageUrl}&hasHtmlContent=true`;
 
         chrome.windows.create({
           url: annotationUrl,
