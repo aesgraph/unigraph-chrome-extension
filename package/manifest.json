@@ -9,7 +9,8 @@
     "scripting",
     "notifications",
     "identity",
-    "storage"
+    "storage",
+    "downloads"
   ],
   "background": {
     "service_worker": "dist/background.js"

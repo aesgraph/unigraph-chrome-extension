@@ -69,6 +69,11 @@ async function createContextMenus(isLoggedIn: boolean) {
           contexts: ["page"],
         });
         chrome.contextMenus.create({
+          id: "downloadWebpage",
+          title: "Download webpage",
+          contexts: ["page"],
+        });
+        chrome.contextMenus.create({
           id: "createAnnotation",
           title: "Create Annotation",
           contexts: ["selection", "image"],
@@ -925,5 +930,123 @@ chrome.contextMenus.onClicked.addListener(
       }
       return;
     }
+    // --- Unigraph: Download webpage ---
+    if (info.menuItemId === "downloadWebpage" && tab) {
+      console.log("[Unigraph] Download webpage clicked for tab:", tab.id);
+      await downloadWebpageAsHTML(tab);
+      return;
+    }
   }
 );
+
+// Function to download a webpage as a single HTML file
+async function downloadWebpageAsHTML(tab: chrome.tabs.Tab) {
+  if (!tab.id) return;
+
+  try {
+    // Execute script to get the complete HTML with inlined resources
+    const result = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => {
+        return new Promise<string>((resolve) => {
+          // Process all images and convert to data URLs
+          const images = document.querySelectorAll("img");
+          let imagesToProcess = images.length;
+
+          if (imagesToProcess === 0) {
+            // No images to process, return the HTML directly
+            resolve(document.documentElement.outerHTML);
+            return;
+          }
+
+          // Process each image
+          images.forEach((img) => {
+            if (img.src) {
+              try {
+                const canvas = document.createElement("canvas");
+                const ctx = canvas.getContext("2d");
+                const imgObj = new Image();
+
+                imgObj.onload = function () {
+                  canvas.width = imgObj.width;
+                  canvas.height = imgObj.height;
+                  ctx?.drawImage(imgObj, 0, 0);
+
+                  try {
+                    // Replace src with data URL
+                    img.setAttribute("src", canvas.toDataURL("image/png"));
+                  } catch (e) {
+                    console.error("Error converting image to data URL:", e);
+                  }
+
+                  imagesToProcess--;
+                  if (imagesToProcess === 0) {
+                    // All images processed, return the HTML
+                    resolve(document.documentElement.outerHTML);
+                  }
+                };
+
+                imgObj.onerror = function () {
+                  console.error("Error loading image:", img.src);
+                  imagesToProcess--;
+                  if (imagesToProcess === 0) {
+                    resolve(document.documentElement.outerHTML);
+                  }
+                };
+
+                // Set crossOrigin to anonymous to avoid CORS issues when possible
+                imgObj.crossOrigin = "anonymous";
+                imgObj.src = img.src;
+              } catch (e) {
+                console.error("Error processing image:", e);
+                imagesToProcess--;
+                if (imagesToProcess === 0) {
+                  resolve(document.documentElement.outerHTML);
+                }
+              }
+            } else {
+              imagesToProcess--;
+              if (imagesToProcess === 0) {
+                resolve(document.documentElement.outerHTML);
+              }
+            }
+          });
+        });
+      },
+    });
+
+    const html = result[0].result ?? "";
+
+    // Generate filename from page title or URL
+    const filename = `${tab.title || "webpage"}.html`.replace(
+      /[^a-z0-9\.]/gi,
+      "_"
+    );
+
+    // Create data URL from HTML content
+    const dataUrl = "data:text/html;charset=utf-8," + encodeURIComponent(html);
+
+    // Download the file
+    chrome.downloads.download({
+      url: dataUrl,
+      filename: filename,
+      saveAs: true,
+    });
+
+    // Notify the user
+    chrome.notifications?.create({
+      type: "basic",
+      iconUrl: "icons/icon16.png",
+      title: "Unigraph",
+      message: "Webpage download started!",
+    });
+  } catch (error) {
+    console.error("[Unigraph] Error downloading webpage:", error);
+    chrome.notifications?.create({
+      type: "basic",
+      iconUrl: "icons/icon16.png",
+      title: "Unigraph Error",
+      message: "Failed to download webpage: " + (error as Error).message,
+    });
+  }
+}
