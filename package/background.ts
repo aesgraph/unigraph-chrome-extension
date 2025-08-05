@@ -248,10 +248,114 @@ chrome.runtime.onInstalled.addListener(() => {
   isUserLoggedIn().then(createContextMenus);
 });
 
+// Listen for window close events to refresh context menu after login
+chrome.windows.onRemoved.addListener(async (windowId) => {
+  // Check if this was a login popup by checking if user is now logged in
+  const isLoggedIn = await isUserLoggedIn();
+  await createContextMenus(isLoggedIn);
+});
+
 // Listen for resize requests from annotation popup and area capture requests
 chrome.runtime.onMessage.addListener(
   (message: any, sender: any, sendResponse: any) => {
     console.log("[Unigraph] Background received message:", message);
+
+    // Handle email/password authentication request from login popup
+    if (message && message.type === "authenticateWithEmailPassword") {
+      console.log("[Unigraph] Email/password authentication request received");
+
+      // @ts-ignore
+      if (typeof (self as any).authenticateWithEmailPassword === "function") {
+        // @ts-ignore
+        (self as any)
+          .authenticateWithEmailPassword(message.email, message.password)
+          .then((result: any) => {
+            if (result && result.session && result.user) {
+              // Save session and user info
+              chrome.storage.local.set(
+                {
+                  supabase_session: result.session,
+                  user_info: result.user,
+                },
+                () => {
+                  console.log(
+                    "[Unigraph] Session saved after email/password login"
+                  );
+                  createContextMenus(true);
+                  sendResponse({ success: true, data: result });
+                }
+              );
+            } else {
+              sendResponse({ success: false, error: "Authentication failed" });
+            }
+          })
+          .catch((error: any) => {
+            console.error(
+              "[Unigraph] Email/password authentication failed:",
+              error
+            );
+            sendResponse({ success: false, error: error.message });
+          });
+      } else {
+        console.error(
+          "[Unigraph] authenticateWithEmailPassword function not loaded"
+        );
+        sendResponse({
+          success: false,
+          error: "Authentication function not available",
+        });
+      }
+      return true; // Keep message channel open for async response
+    }
+
+    // Handle Google OAuth authentication request from login popup
+    if (message && message.type === "authenticateWithGoogle") {
+      console.log("[Unigraph] Google OAuth authentication request received");
+
+      // @ts-ignore
+      if (typeof (self as any).authenticateWithGoogle === "function") {
+        // @ts-ignore
+        (self as any)
+          .authenticateWithGoogle()
+          .then((result: any) => {
+            if (result && result.session && result.user) {
+              // Save session and user info
+              chrome.storage.local.set(
+                {
+                  supabase_session: result.session,
+                  user_info: result.user,
+                },
+                () => {
+                  console.log(
+                    "[Unigraph] Session saved after Google OAuth login"
+                  );
+                  createContextMenus(true);
+                  sendResponse({ success: true, data: result });
+                }
+              );
+            } else {
+              sendResponse({
+                success: false,
+                error: "Google authentication failed",
+              });
+            }
+          })
+          .catch((error: any) => {
+            console.error(
+              "[Unigraph] Google OAuth authentication failed:",
+              error
+            );
+            sendResponse({ success: false, error: error.message });
+          });
+      } else {
+        console.error("[Unigraph] authenticateWithGoogle function not loaded");
+        sendResponse({
+          success: false,
+          error: "Google authentication function not available",
+        });
+      }
+      return true; // Keep message channel open for async response
+    }
 
     if (
       message &&
@@ -431,58 +535,27 @@ chrome.action.onClicked.addListener(async (tab) => {
 
 chrome.contextMenus.onClicked.addListener(
   async (info: chrome.contextMenus.OnClickData, tab?: chrome.tabs.Tab) => {
-    if (info.menuItemId === "loginToUnigraph") {
+    console.log("[Unigraph] Context menu clicked:", info.menuItemId);
+
+        if (info.menuItemId === "loginToUnigraph") {
       console.log("[Unigraph] 'Log in' menu clicked");
-      // @ts-ignore
-      if (typeof (self as any).authenticateWithGoogle === "function") {
-        console.log("[Unigraph] Calling authenticateWithGoogle...");
-        // @ts-ignore
-        (self as any)
-          .authenticateWithGoogle()
-          .then((result: any) => {
-            // Save session and user info with debug log
-            if (result && result.session && result.user) {
-              chrome.storage.local.set(
-                {
-                  supabase_session: result.session,
-                  user_info: result.user,
-                },
-                () => {
-                  console.log(
-                    "[Unigraph] Session saved to storage after login:",
-                    result.session
-                  );
-                  createContextMenus(true);
-                  console.log("[Unigraph] Context menu refreshed after login");
-                }
-              );
-            } else {
-              console.warn(
-                "[Unigraph] No session/user returned from authenticateWithGoogle"
-              );
-              createContextMenus(true);
-            }
-          })
-          .catch((err: any) => {
-            console.error("[Unigraph] Authentication failed:", err);
-            chrome.notifications?.create({
-              type: "basic",
-              iconUrl: "icons/icon16.png",
-              title: "Unigraph Login Error",
-              message: "Failed to log in. See background page for details.",
-            });
-          });
-      } else {
-        console.error("[Unigraph] authenticateWithGoogle not loaded");
-        chrome.notifications?.create({
-          type: "basic",
-          iconUrl: "icons/icon16.png",
-          title: "Unigraph Error",
-          message: "Login function not loaded. Try reloading the extension.",
-        });
-      }
+      // Open the login popup
+      chrome.windows.create({
+        url: "login.html",
+        type: "popup",
+        width: 450,
+        height: 600,
+        focused: true,
+      }, (window) => {
+        if (chrome.runtime.lastError) {
+          console.error("[Unigraph] Failed to create login popup:", chrome.runtime.lastError);
+        } else {
+          console.log("[Unigraph] Login popup created successfully:", window);
+        }
+      });
       return;
     }
+
     if (info.menuItemId === "logoutOfUnigraph") {
       chrome.storage.local.remove(["supabase_session", "user_info"], () => {
         createContextMenus(false);

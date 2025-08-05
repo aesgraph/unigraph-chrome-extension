@@ -133,6 +133,67 @@ async function authenticateWithGoogle(): Promise<AuthResult> {
   });
 }
 
+// Function to authenticate with email and password
+async function authenticateWithEmailPassword(
+  email: string,
+  password: string
+): Promise<AuthResult> {
+  try {
+    // Initialize Supabase client
+    const supabase = await initSupabase();
+
+    // Use Supabase's built-in email/password authentication
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data.session || !data.user) {
+      throw new Error(
+        "Authentication failed - no session or user data received"
+      );
+    }
+
+    // Create session object in the format expected by the extension
+    const session = {
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+      user: {
+        id: data.user.id,
+        email: data.user.email,
+        name: data.user.email?.split("@")[0], // Use email prefix as name
+        full_name: data.user.email,
+      },
+    };
+
+    // Save session and user info
+    await new Promise<void>((resolve, reject) => {
+      chrome.storage.local.set(
+        {
+          supabase_session: session,
+          user_info: session.user,
+        },
+        () => {
+          if (chrome.runtime.lastError) {
+            reject(chrome.runtime.lastError);
+          } else {
+            resolve();
+          }
+        }
+      );
+    });
+
+    return { session, user: session.user };
+  } catch (error) {
+    console.error("Email/password authentication error:", error);
+    throw error;
+  }
+}
+
 // Function to save annotation to Supabase
 async function saveAnnotation(annotation: Annotation): Promise<any> {
   try {
@@ -361,6 +422,7 @@ async function validateSession(session: any): Promise<boolean> {
 
 // Make functions available globally
 (self as any).authenticateWithGoogle = authenticateWithGoogle;
+(self as any).authenticateWithEmailPassword = authenticateWithEmailPassword;
 (self as any).saveAnnotation = saveAnnotation;
 (self as any).isAuthenticated = isAuthenticated;
 (self as any).saveWebpage = saveWebpage;
