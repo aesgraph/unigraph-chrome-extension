@@ -31,7 +31,9 @@ interface AnnotationData {
 
 interface Annotation {
   selectedText?: string;
+  textTitle?: string;
   imageUrl?: string;
+  imageTitle?: string;
   comment: string;
   secondaryComment?: string;
   tags?: string[];
@@ -133,19 +135,19 @@ async function authenticateWithGoogle(): Promise<AuthResult> {
   });
 }
 
-// Function to authenticate with email and password
+// Function to authenticate with email and password //pragma: allowlist secret
 async function authenticateWithEmailPassword(
   email: string,
-  password: string
+  password: string //pragma: allowlist secret
 ): Promise<AuthResult> {
   try {
     // Initialize Supabase client
     const supabase = await initSupabase();
 
-    // Use Supabase's built-in email/password authentication
+    // Use Supabase's built-in email/password authentication //pragma: allowlist secret
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
-      password,
+      password, //pragma: allowlist secret
     });
 
     if (error) {
@@ -189,7 +191,7 @@ async function authenticateWithEmailPassword(
 
     return { session, user: session.user };
   } catch (error) {
-    console.error("Email/password authentication error:", error);
+    console.error("Email/password authentication error:", error); //pragma: allowlist secret
     throw error;
   }
 }
@@ -227,7 +229,10 @@ async function saveAnnotation(annotation: Annotation): Promise<any> {
     if (annotation.imageUrl) {
       // Image annotation
       annotationData = {
-        title: annotation.comment || `Annotation from ${annotation.pageUrl}`,
+        title:
+          annotation.imageTitle ||
+          annotation.comment ||
+          `Image annotation from ${annotation.pageUrl}`,
         data: {
           image_url: annotation.imageUrl,
           comment: annotation.comment,
@@ -241,7 +246,10 @@ async function saveAnnotation(annotation: Annotation): Promise<any> {
     } else if (annotation.selectedText) {
       // Text annotation
       annotationData = {
-        title: annotation.comment || `Annotation from ${annotation.pageUrl}`,
+        title:
+          annotation.textTitle ||
+          annotation.comment ||
+          `Text annotation from ${annotation.pageUrl}`,
         data: {
           selected_text: annotation.selectedText,
           comment: annotation.comment,
@@ -420,6 +428,51 @@ async function validateSession(session: any): Promise<boolean> {
   }
 }
 
+// Function to check if a webpage exists in Supabase
+async function checkWebpageExists(
+  url: string
+): Promise<{ exists: boolean; webpage?: any }> {
+  try {
+    // Get session from storage
+    const data: any = await new Promise((resolve) => {
+      chrome.storage.local.get(["supabase_session"], resolve);
+    });
+    if (!data.supabase_session || !data.supabase_session.access_token) {
+      await authenticateWithGoogle();
+      const refreshed: any = await new Promise((resolve) => {
+        chrome.storage.local.get(["supabase_session"], resolve);
+      });
+      data.supabase_session = refreshed.supabase_session;
+    }
+    const supabase = await initSupabase();
+    await supabase.auth.setSession({
+      access_token: data.supabase_session.access_token,
+      refresh_token: data.supabase_session.refresh_token,
+    });
+
+    // Check if the webpage exists for this url
+    console.log("Checking if webpage exists:", url);
+    const { data: existing, error: selectError } = await supabase
+      .from("webpages")
+      .select("*")
+      .eq("url", url)
+      .limit(1);
+
+    if (selectError) throw selectError;
+
+    if (existing && existing.length > 0) {
+      console.log("Webpage exists:", existing[0]);
+      return { exists: true, webpage: existing[0] };
+    }
+
+    console.log("Webpage does not exist");
+    return { exists: false };
+  } catch (error) {
+    console.error("Error checking webpage existence:", error);
+    return { exists: false };
+  }
+}
+
 // Make functions available globally
 (self as any).authenticateWithGoogle = authenticateWithGoogle;
 (self as any).authenticateWithEmailPassword = authenticateWithEmailPassword;
@@ -428,3 +481,10 @@ async function validateSession(session: any): Promise<boolean> {
 (self as any).saveWebpage = saveWebpage;
 (self as any).uploadScreenshot = uploadScreenshot;
 (self as any).validateSession = validateSession;
+(self as any).checkWebpageExists = checkWebpageExists;
+
+// Also expose to window for annotation window and save-webpage window
+if (typeof window !== "undefined") {
+  (window as any).checkWebpageExists = checkWebpageExists;
+  (window as any).saveWebpage = saveWebpage;
+}

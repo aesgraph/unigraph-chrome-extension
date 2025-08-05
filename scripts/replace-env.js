@@ -44,7 +44,7 @@ fs.readdirSync(DIST_DIR).forEach((file) => {
 replaceInFile(MANIFEST_PATH, replacements);
 
 // Copy HTML and JS files to dist directory
-const FILES_TO_COPY = ["login.html", "annotation.html", "login.js"];
+const FILES_TO_COPY = ["login.html", "login.js", "save-webpage.html"];
 const PACKAGE_DIR = path.resolve(__dirname, "../package");
 
 FILES_TO_COPY.forEach((file) => {

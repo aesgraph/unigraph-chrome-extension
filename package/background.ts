@@ -255,12 +255,12 @@ chrome.windows.onRemoved.addListener(async (windowId) => {
   await createContextMenus(isLoggedIn);
 });
 
-// Listen for resize requests from annotation popup and area capture requests
+// Listen for area capture requests
 chrome.runtime.onMessage.addListener(
   (message: any, sender: any, sendResponse: any) => {
     console.log("[Unigraph] Background received message:", message);
 
-    // Handle email/password authentication request from login popup
+    // Handle email/password authentication request from login popup //pragma: allowlist secret
     if (message && message.type === "authenticateWithEmailPassword") {
       console.log("[Unigraph] Email/password authentication request received");
 
@@ -268,7 +268,7 @@ chrome.runtime.onMessage.addListener(
       if (typeof (self as any).authenticateWithEmailPassword === "function") {
         // @ts-ignore
         (self as any)
-          .authenticateWithEmailPassword(message.email, message.password)
+          .authenticateWithEmailPassword(message.email, message.password) //pragma: allowlist secret
           .then((result: any) => {
             if (result && result.session && result.user) {
               // Save session and user info
@@ -357,29 +357,6 @@ chrome.runtime.onMessage.addListener(
       return true; // Keep message channel open for async response
     }
 
-    if (
-      message &&
-      message.type === "resizeAnnotationWindow" &&
-      typeof message.height === "number"
-    ) {
-      chrome.windows.getCurrent((win) => {
-        if (win && win.type === "popup") {
-          const minHeight = 320,
-            maxHeight = 600;
-          const minWidth = 360,
-            maxWidth = 900;
-          const height = Math.max(
-            minHeight,
-            Math.min(maxHeight, message.height)
-          );
-          // Maintain 4:3 aspect ratio
-          let width = Math.round((height * 4) / 3);
-          width = Math.max(minWidth, Math.min(maxWidth, width));
-          chrome.windows.update(win.id!, { height, width });
-        }
-      });
-    }
-
     // Handle area capture request from content script
     if (message && message.type === "unigraph_area_capture" && sender.tab) {
       console.log("[Unigraph] Area capture request received:", message);
@@ -439,33 +416,67 @@ chrome.runtime.onMessage.addListener(
       return true; // Keep message channel open for async response
     }
 
-    // Handle annotation window opening request from content script
-    if (message && message.type === "open_annotation_window") {
-      console.log("[Unigraph] Opening annotation window from content script");
-      console.log("[Unigraph] Annotation URL:", message.annotationUrl);
+    // Handle save-webpage window opening request from content script
+    if (message && message.type === "open_save_webpage_window") {
+      console.log("[Unigraph] Opening save-webpage window from content script");
+      console.log("[Unigraph] Save-webpage URL:", message.saveWebpageUrl);
 
       chrome.windows
         .create({
-          url: message.annotationUrl,
+          url: message.saveWebpageUrl,
           type: "popup",
-          width: 400,
-          height: 500,
+          width: 450,
+          height: 600,
           focused: true,
         })
         .then((window) => {
           console.log(
-            "[Unigraph] Annotation window created successfully:",
+            "[Unigraph] Save-webpage window created successfully:",
             window
           );
           sendResponse({ success: true, windowId: window?.id });
         })
         .catch((error) => {
           console.error(
-            "[Unigraph] Failed to create annotation window:",
+            "[Unigraph] Failed to create save-webpage window:",
             error
           );
           sendResponse({ success: false, error: error.message });
         });
+
+      return true; // Keep message channel open for async response
+    }
+
+    // Handle screenshot capture request from save-webpage popup
+    if (message && message.type === "capture_screenshot") {
+      console.log("[Unigraph] Screenshot capture request received");
+
+      (async () => {
+        try {
+          // Find the tab with the specified URL
+          const tabs = await chrome.tabs.query({ url: message.pageUrl });
+          if (tabs.length === 0) {
+            console.error("[Unigraph] No tab found for URL:", message.pageUrl);
+            sendResponse({ success: false, error: "No tab found for URL" });
+            return;
+          }
+
+          const tab = tabs[0];
+          console.log("[Unigraph] Capturing screenshot for tab:", tab.id);
+
+          // Capture screenshot
+          const screenshot = await chrome.tabs.captureVisibleTab(tab.windowId, {
+            format: "png",
+            quality: 80,
+          });
+
+          console.log("[Unigraph] Screenshot captured successfully");
+          sendResponse({ success: true, screenshot: screenshot });
+        } catch (error) {
+          console.error("[Unigraph] Failed to capture screenshot:", error);
+          sendResponse({ success: false, error: (error as Error).message });
+        }
+      })();
 
       return true; // Keep message channel open for async response
     }
@@ -502,32 +513,32 @@ chrome.action.onClicked.addListener(async (tab) => {
       quality: 80,
     });
 
-    // Create annotation URL with screenshot and page URL
+    // Create save-webpage URL with screenshot and page URL
     const encodedImageUrl = encodeURIComponent(screenshot);
     const encodedPageUrl = encodeURIComponent(tab.url);
-    const annotationUrl = `annotation.html?imageUrl=${encodedImageUrl}&pageUrl=${encodedPageUrl}`;
+    const saveWebpageUrl = `save-webpage.html?imageUrl=${encodedImageUrl}&pageUrl=${encodedPageUrl}`;
 
-    // Open annotation window
+    // Open save-webpage window
     chrome.windows.create({
-      url: annotationUrl,
+      url: saveWebpageUrl,
       type: "popup",
-      width: 400,
-      height: 500,
+      width: 450,
+      height: 600,
       focused: true,
     });
 
-    console.log("[Unigraph] Opened annotation window with screenshot");
+    console.log("[Unigraph] Opened save-webpage window with screenshot");
   } catch (error) {
     console.error("[Unigraph] Failed to capture screenshot:", error);
-    // Fallback: open annotation without screenshot
+    // Fallback: open save-webpage without screenshot
     const encodedPageUrl = encodeURIComponent(tab.url);
-    const annotationUrl = `annotation.html?pageUrl=${encodedPageUrl}`;
+    const saveWebpageUrl = `save-webpage.html?pageUrl=${encodedPageUrl}`;
 
     chrome.windows.create({
-      url: annotationUrl,
+      url: saveWebpageUrl,
       type: "popup",
-      width: 400,
-      height: 500,
+      width: 450,
+      height: 600,
       focused: true,
     });
   }
@@ -537,22 +548,28 @@ chrome.contextMenus.onClicked.addListener(
   async (info: chrome.contextMenus.OnClickData, tab?: chrome.tabs.Tab) => {
     console.log("[Unigraph] Context menu clicked:", info.menuItemId);
 
-        if (info.menuItemId === "loginToUnigraph") {
+    if (info.menuItemId === "loginToUnigraph") {
       console.log("[Unigraph] 'Log in' menu clicked");
       // Open the login popup
-      chrome.windows.create({
-        url: "login.html",
-        type: "popup",
-        width: 450,
-        height: 600,
-        focused: true,
-      }, (window) => {
-        if (chrome.runtime.lastError) {
-          console.error("[Unigraph] Failed to create login popup:", chrome.runtime.lastError);
-        } else {
-          console.log("[Unigraph] Login popup created successfully:", window);
+      chrome.windows.create(
+        {
+          url: "login.html",
+          type: "popup",
+          width: 450,
+          height: 600,
+          focused: true,
+        },
+        (window) => {
+          if (chrome.runtime.lastError) {
+            console.error(
+              "[Unigraph] Failed to create login popup:",
+              chrome.runtime.lastError
+            );
+          } else {
+            console.log("[Unigraph] Login popup created successfully:", window);
+          }
         }
-      });
+      );
       return;
     }
 
@@ -589,30 +606,36 @@ chrome.contextMenus.onClicked.addListener(
         return;
       }
 
-      let annotationUrl: string | undefined;
       if (info.srcUrl) {
-        // Image annotation
+        // Image annotation - use save-webpage.html
         const encodedImageUrl = encodeURIComponent(info.srcUrl);
-        annotationUrl = `annotation.html?imageUrl=${encodedImageUrl}&pageUrl=${encodeURIComponent(
+        const saveWebpageUrl = `save-webpage.html?imageUrl=${encodedImageUrl}&pageUrl=${encodeURIComponent(
           tab && tab.url ? tab.url : ""
         )}`;
+        chrome.windows.create({
+          url: saveWebpageUrl,
+          type: "popup",
+          width: 450,
+          height: 600,
+          focused: true,
+        });
       } else if (info.selectionText) {
-        // Text annotation
+        // Text annotation - use save-webpage.html with text parameter
         const encodedText = encodeURIComponent(info.selectionText);
         const encodedPageUrl = encodeURIComponent(
           tab && tab.url ? tab.url : ""
         );
-        annotationUrl = `annotation.html?text=${encodedText}&pageUrl=${encodedPageUrl}`;
+        const saveWebpageUrl = `save-webpage.html?pageUrl=${encodedPageUrl}&text=${encodedText}`;
+        chrome.windows.create({
+          url: saveWebpageUrl,
+          type: "popup",
+          width: 450,
+          height: 600,
+          focused: true,
+        });
       } else {
         return;
       }
-      chrome.windows.create({
-        url: annotationUrl,
-        type: "popup",
-        width: 320,
-        height: 340,
-        focused: true,
-      });
       return;
     }
     // --- Unigraph: Save selection ---
@@ -625,62 +648,24 @@ chrome.contextMenus.onClicked.addListener(
     }
     // --- Unigraph: Save page ---
     if (info.menuItemId === "savePageToUnigraph" && tab && tab.url) {
-      // Validate session before opening annotation window
+      // Validate session before opening save webpage window
       if (!(await validateSessionBeforeAction())) {
         return;
       }
 
-      try {
-        // Reuse the extractWebpageHTML function to get the HTML content
-        const html = await extractWebpageHTML(tab);
-        const pageUrl = tab.url || "";
+      const pageUrl = tab.url || "";
+      const encodedPageUrl = encodeURIComponent(pageUrl);
+      const saveWebpageUrl = `save-webpage.html?pageUrl=${encodedPageUrl}`;
 
-        // Take a screenshot for the preview
-        const screenshot = await chrome.tabs.captureVisibleTab(tab.windowId, {
-          format: "png",
-          quality: 80,
-        });
+      chrome.windows.create({
+        url: saveWebpageUrl,
+        type: "popup",
+        width: 450,
+        height: 600,
+        focused: true,
+      });
 
-        // Store HTML content in chrome.storage for the annotation window to access
-        await chrome.storage.local.set({
-          tempHtmlContent: html,
-          tempPageUrl: pageUrl,
-        });
-
-        // Create annotation URL with screenshot and page URL (HTML content stored separately)
-        const encodedImageUrl = encodeURIComponent(screenshot);
-        const encodedHtml = encodeURIComponent(html);
-        const encodedPageUrl = encodeURIComponent(pageUrl);
-        const annotationUrl = `annotation.html?imageUrl=${encodedImageUrl}&pageUrl=${encodedPageUrl}&hasHtmlContent=true`;
-
-        chrome.windows.create({
-          url: annotationUrl,
-          type: "popup",
-          width: 400,
-          height: 500,
-          focused: true,
-        });
-
-        console.log(
-          "[Unigraph] Opened annotation window with screenshot and HTML content"
-        );
-      } catch (error) {
-        console.error(
-          "[Unigraph] Error extracting content for annotation:",
-          error
-        );
-        // Fallback: open annotation without content
-        const pageUrl = tab.url || "";
-        const encodedPageUrl = encodeURIComponent(pageUrl);
-        const annotationUrl = `annotation.html?pageUrl=${encodedPageUrl}`;
-        chrome.windows.create({
-          url: annotationUrl,
-          type: "popup",
-          width: 400,
-          height: 500,
-          focused: true,
-        });
-      }
+      console.log("[Unigraph] Opened save webpage window");
       return;
     }
     // --- Unigraph: Save page as screenshot ---
@@ -697,35 +682,35 @@ chrome.contextMenus.onClicked.addListener(
           quality: 80,
         })
         .then((screenshot) => {
-          // Create annotation URL with screenshot and page URL
+          // Create save-webpage URL with screenshot and page URL
           const encodedImageUrl = encodeURIComponent(screenshot);
           const encodedPageUrl = encodeURIComponent(tab.url!);
-          const annotationUrl = `annotation.html?imageUrl=${encodedImageUrl}&pageUrl=${encodedPageUrl}`;
+          const saveWebpageUrl = `save-webpage.html?pageUrl=${encodedPageUrl}&imageUrl=${encodedImageUrl}`;
 
-          // Open annotation window
+          // Open save-webpage window
           chrome.windows.create({
-            url: annotationUrl,
+            url: saveWebpageUrl,
             type: "popup",
-            width: 400,
-            height: 500,
+            width: 450,
+            height: 600,
             focused: true,
           });
 
           console.log(
-            "[Unigraph] Opened annotation window with screenshot from context menu"
+            "[Unigraph] Opened save-webpage window with screenshot from context menu"
           );
         })
         .catch((error) => {
           console.error("[Unigraph] Failed to capture screenshot:", error);
-          // Fallback: open annotation without screenshot
+          // Fallback: open save-webpage without screenshot
           const encodedPageUrl = encodeURIComponent(tab.url!);
-          const annotationUrl = `annotation.html?pageUrl=${encodedPageUrl}`;
+          const saveWebpageUrl = `save-webpage.html?pageUrl=${encodedPageUrl}`;
 
           chrome.windows.create({
-            url: annotationUrl,
+            url: saveWebpageUrl,
             type: "popup",
-            width: 400,
-            height: 500,
+            width: 450,
+            height: 600,
             focused: true,
           });
         });
@@ -986,24 +971,24 @@ chrome.contextMenus.onClicked.addListener(
             }
 
             if (pdfUrl) {
-              // Create annotation URL with PDF URL
+              // Create save-webpage URL with PDF URL
               const encodedPdfUrl = encodeURIComponent(pdfUrl);
-              const annotationUrl = `annotation.html?pdfUrl=${encodedPdfUrl}&pageUrl=${encodedPdfUrl}`;
+              const saveWebpageUrl = `save-webpage.html?pdfUrl=${encodedPdfUrl}&pageUrl=${encodedPdfUrl}`;
               console.log(
-                "[Unigraph] Creating annotation window with URL:",
-                annotationUrl
+                "[Unigraph] Creating save-webpage window with URL:",
+                saveWebpageUrl
               );
 
               chrome.windows.create({
-                url: annotationUrl,
+                url: saveWebpageUrl,
                 type: "popup",
-                width: 400,
-                height: 500,
+                width: 450,
+                height: 600,
                 focused: true,
               });
 
               console.log(
-                "[Unigraph] Opened annotation window for PDF:",
+                "[Unigraph] Opened save-webpage window for PDF:",
                 pdfUrl
               );
             } else {
@@ -1018,19 +1003,19 @@ chrome.contextMenus.onClicked.addListener(
       }
 
       if (pdfUrl) {
-        // Create annotation URL with PDF URL
+        // Create save-webpage URL with PDF URL
         const encodedPdfUrl = encodeURIComponent(pdfUrl);
-        const annotationUrl = `annotation.html?pdfUrl=${encodedPdfUrl}&pageUrl=${encodedPdfUrl}`;
+        const saveWebpageUrl = `save-webpage.html?pdfUrl=${encodedPdfUrl}&pageUrl=${encodedPdfUrl}`;
 
         chrome.windows.create({
-          url: annotationUrl,
+          url: saveWebpageUrl,
           type: "popup",
-          width: 400,
-          height: 500,
+          width: 450,
+          height: 600,
           focused: true,
         });
 
-        console.log("[Unigraph] Opened annotation window for PDF:", pdfUrl);
+        console.log("[Unigraph] Opened save-webpage window for PDF:", pdfUrl);
       } else {
         console.log("[Unigraph] No PDF URL found in context menu data");
       }
