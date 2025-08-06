@@ -42,3 +42,19 @@ fs.readdirSync(DIST_DIR).forEach((file) => {
 
 // Replace in manifest.json
 replaceInFile(MANIFEST_PATH, replacements);
+
+// Copy HTML and JS files to dist directory
+const FILES_TO_COPY = ["login.html", "login.js", "save-webpage.html"];
+const PACKAGE_DIR = path.resolve(__dirname, "../package");
+
+FILES_TO_COPY.forEach((file) => {
+  const sourcePath = path.join(PACKAGE_DIR, file);
+  const destPath = path.join(DIST_DIR, file);
+
+  if (fs.existsSync(sourcePath)) {
+    fs.copyFileSync(sourcePath, destPath);
+    console.log(`Copied: ${file} to dist/`);
+  } else {
+    console.warn(`Warning: ${file} not found in package directory`);
+  }
+});

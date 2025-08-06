@@ -203,32 +203,34 @@
             croppedDataUrl.length
           );
 
-          // Open annotation window with cropped image
+          // Open save-webpage window with cropped image
           const encodedImageUrl = encodeURIComponent(croppedDataUrl);
           const encodedPageUrl = encodeURIComponent(pageUrl);
-          const annotationUrl = `annotation.html?imageUrl=${encodedImageUrl}&pageUrl=${encodedPageUrl}`;
+          const saveWebpageUrl = `save-webpage.html?imageUrl=${encodedImageUrl}&pageUrl=${encodedPageUrl}`;
 
           console.log(
-            "[Unigraph] Opening annotation window with URL:",
-            annotationUrl.substring(0, 100) + "..."
+            "[Unigraph] Opening save-webpage window with URL:",
+            saveWebpageUrl.substring(0, 100) + "..."
           );
 
-          // Use chrome.windows.create instead of window.open for better control
+          // Use chrome.wuntime.sendMessage to open save-webpage window
           chrome.runtime.sendMessage(
             {
-              type: "open_annotation_window",
-              annotationUrl: annotationUrl,
+              type: "open_save_webpage_window",
+              saveWebpageUrl: saveWebpageUrl,
             },
             (response) => {
               if (chrome.runtime.lastError) {
                 console.error(
-                  "[Unigraph] Failed to open annotation window:",
+                  "[Unigraph] Failed to open save-webpage window:",
                   chrome.runtime.lastError
                 );
                 // Fallback to window.open
-                window.open(annotationUrl, "_blank", "width=400,height=500");
+                window.open(saveWebpageUrl, "_blank", "width=450,height=600");
               } else {
-                console.log("[Unigraph] Annotation window opened successfully");
+                console.log(
+                  "[Unigraph] Save-webpage window opened successfully"
+                );
               }
             }
           );
